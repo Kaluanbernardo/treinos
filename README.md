@@ -91,9 +91,46 @@ card de Evolução com `v_recomposition`, itens pulados e próxima atividade via
 como "Em breve (F1)". Tema escuro com a paleta da seção 10 do plano; manifest "Fitness Kaluan" / "Fitness",
 cor `#0E1116`, ícones 192/512 + maskable.
 
+## Estado atual (27/10/2026) — aplicado via HTTPS
+
+As portas 5432/6543 estão bloqueadas no box, então tudo foi feito pela **Supabase Management API**
+(`POST /v1/projects/qlphmxjehsexuxspspaw/database/query`, token em `$SUPABASE_ACCESS_TOKEN` ou
+`/home/box/.secrets/supabase_access_token`, 600). Os scripts psql acima continuam válidos para quando houver acesso direto.
+
+- 5 migrations aplicadas (registradas em `public._migrations`, incluindo `20261027190000_bot_set_role.sql`,
+  que faz `grant bot to postgres with set true, inherit false` para o admin poder executar *como* bot) + seed.
+- Usuário de login criado (Admin API, e-mail confirmado), senha em `/home/box/.secrets/fitness_login_password` (600);
+  `app_config.owner_uuid` gravado. Chaves anon/service_role em `/home/box/.secrets/fitness_supabase_keys.env` (600).
+- Cadastro público **desligado** via `PATCH /v1/projects/{ref}/config/auth {"disable_signup": true}` (verificado: signup → 422).
+- `web/.env.local` (não versionado) com URL + anon key; `npm run build` ok.
+
+### Acesso do bot: `scripts/fit` (HTTPS, executa como role `bot`)
+
+Cada chamada vira `begin; set local role bot; <um comando>; commit;` — RLS e grants mínimos do `bot` valem
+(DDL e `auth` negados). O CLI recusa `;`, `$`, comentários e palavras de controle (`role`, `reset`, `begin`,
+`commit`, `set_config`...) para impedir sair do role. Obs.: o token da Management API é de admin; o isolamento é
+do CLI, não do token.
+
+```bash
+scripts/fit sql "select * from v_week"      # SQL arbitrário como bot (um comando)
+scripts/fit today                            # v_today
+scripts/fit body 93.8 [101.5] [--date 2026-10-27]   # upsert peso (e cintura) do dia
+scripts/fit evo                              # v_recomposition + v_weight_trend
+scripts/fit admin-sql "..."                  # manutenção como postgres (evitar)
+```
+
+### Backup e keepalive (instalados no crontab do box, CRON_TZ=America/Sao_Paulo)
+
+```cron
+30 3 * * * /workspace/fitness/app/scripts/backup_https.sh >> /workspace/fitness/backups/backup.log 2>&1
+0 9 * * * /workspace/fitness/app/scripts/keepalive_https.sh
+```
+`backup_https.sh`: JSON (gzip) de todas as tabelas de `public` em `/workspace/fitness/backups/`, retenção 30 dias
+(não inclui `auth`). `keepalive_https.sh`: consulta leve como bot, log em `/workspace/fitness/backups/keepalive.log`.
+
 ## Pendências (do Kaluan / próximos passos)
 
-1. **anon key** (Settings → API) → `web/.env.local` (e no Cloudflare Pages, no deploy).
+1. ~~anon key~~ (feito) — falta colocá-la nas env vars do Cloudflare Pages no deploy.
 2. **Connection string do Session pooler** com a senha do banco → `/home/box/.secrets/fitness_db_url` (600).
    Este box não alcança as portas 5432/6543 hoje, então as migrations **ainda não** foram aplicadas no projeto remoto.
 3. **E-mail do login** → `create_login_user.sh` (ou o fallback do Dashboard + `set_owner.sh`).

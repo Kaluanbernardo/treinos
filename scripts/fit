@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""fit — acesso do bot ao banco por HTTPS (Supabase Management API), executando como role `bot`.
+Uso: fit sql "<SQL>" | fit today | fit body <kg> [cintura_cm] [--date AAAA-MM-DD] | fit evo | fit admin-sql "<SQL>" (postgres; uso de manutenção)
+Token: $SUPABASE_ACCESS_TOKEN ou /home/box/.secrets/supabase_access_token (nunca impresso)."""
+import json, os, re, sys, urllib.request, urllib.error
+REF = os.environ.get("SUPABASE_PROJECT_REF", "qlphmxjehsexuxspspaw")
+TOKEN_FILE = "/home/box/.secrets/supabase_access_token"
+
+def token():
+    t = os.environ.get("SUPABASE_ACCESS_TOKEN")
+    if not t and os.path.exists(TOKEN_FILE):
+        t = open(TOKEN_FILE).read().strip()
+    if not t: sys.exit("erro: SUPABASE_ACCESS_TOKEN ausente")
+    return t
+
+def run(query):
+    req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query",
+        data=json.dumps({"query": query}).encode(), method="POST",
+        headers={"Authorization": "Bearer " + token(), "Content-Type": "application/json", "User-Agent": "fit-cli"})
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=120))
+    except urllib.error.HTTPError as e:
+        try: msg = json.loads(e.read()).get("message", "")
+        except Exception: msg = str(e)
+        sys.exit(f"erro {e.code}: {msg}")
+
+# Bloqueia tentativas de sair do role bot dentro da mesma requisição.
+ESCAPE = re.compile(r"\b(role|session_authorization|commit|rollback|begin|abort|savepoint|release|prepare|reset|set_config)\b", re.I)
+
+def bot(query):
+    if ESCAPE.search(re.sub(r"'(?:[^']|'')*'", "''", query)):
+        sys.exit("erro: SQL do bot não pode conter controle de transação/role (begin/commit/set/reset/role...)")
+    q = query.strip().rstrip(";").strip()
+    bare = re.sub(r"'(?:[^']|'')*'", "''", q)
+    if ";" in bare or "$" in bare or "--" in bare or "/*" in bare:
+        sys.exit("erro: o bot executa um único comando por chamada (sem ';', '$', comentários)")
+    rows = run(f"begin; set local role bot; set local statement_timeout = '30s';\n{q};\ncommit;")
+    return rows
+
+def lit(v):
+    return "null" if v is None else "'" + str(v).replace("'", "''") + "'"
+
+def show(rows):
+    print(json.dumps(rows, ensure_ascii=False, indent=1, default=str))
+
+def main(a):
+    if not a or a[0] in ("-h", "--help"): print(__doc__); return
+    c = a[0]
+    if c == "sql" and len(a) == 2: show(bot(a[1]))
+    elif c == "admin-sql" and len(a) == 2: show(run(a[1]))
+    elif c == "today":
+        show(bot("select start_time, title, modality_label, plan_kind, template_name, exercise_count, session_status, motivo from v_today order by start_time"))
+    elif c == "body" and len(a) >= 2:
+        args = a[1:]; date = None
+        if "--date" in args:
+            i = args.index("--date"); date = args[i+1]; del args[i:i+2]
+        kg = float(args[0].replace(",", ".")); waist = float(args[1].replace(",", ".")) if len(args) > 1 else None
+        d = lit(date) + "::date" if date else "public.today_sp()"
+        show(bot(f"insert into body_metrics (date, peso_kg, cintura_cm, source) values ({d}, {kg}, {lit(waist)}::numeric, 'bot') "
+                 f"on conflict (date) do update set peso_kg = excluded.peso_kg, cintura_cm = coalesce(excluded.cintura_cm, body_metrics.cintura_cm), source = 'bot' "
+                 f"returning date, peso_kg, cintura_cm"))
+    elif c == "evo":
+        print("# v_recomposition"); show(bot("select * from v_recomposition"))
+        print("# v_weight_trend (últimos 14)"); show(bot("select date, peso_kg, avg_7d, delta_7d, pace_pct_week, above_cap from v_weight_trend order by date desc limit 14"))
+    else: print(__doc__); sys.exit(2)
+
+if __name__ == "__main__": main(sys.argv[1:])
