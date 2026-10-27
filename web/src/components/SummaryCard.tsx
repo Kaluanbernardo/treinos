@@ -16,8 +16,8 @@ export function SummaryStats({ row, prev }: { row: PeriodSummary; prev?: PeriodS
       <Stat label="Recordes" value={<span className={row.n_prs ? 'text-lime' : ''}>{row.n_prs}</span>}
         sub={row.n_sets ? `${row.n_sets} séries · ${intFmt(row.volume_kg)} kg` : 'sem séries registradas'}
         icon={row.n_prs ? <Trophy size={18} className="text-lime" aria-hidden="true" /> : undefined} />
-      <Stat label="Peso (média 7d)" value={row.weight_delta_kg != null ? `${signed(row.weight_delta_kg)} kg` : row.weight_avg7_end != null ? `${num(row.weight_avg7_end)} kg` : '—'}
-        sub={row.weight_delta_kg != null ? `fechou em ${num(row.weight_avg7_end)} kg` : row.weight_avg7_end != null ? 'sem período anterior para comparar' : 'sem pesagem'} />
+      <Stat label="Peso" value={row.weight_delta_kg != null ? `${signed(row.weight_delta_kg)} kg` : row.weight_avg7_end != null ? `${num(row.weight_avg7_end)} kg` : '—'}
+        sub={row.weight_delta_kg != null ? `média 7d fechou em ${num(row.weight_avg7_end)} kg` : row.weight_avg7_end != null ? 'primeiro período: sem variação ainda' : 'sem pesagem'} />
       <Stat label="Cintura" value={row.waist_last_cm != null ? `${num(row.waist_last_cm)} cm` : '—'}
         sub={waistDelta != null ? `${signed(waistDelta)} cm vs anterior` : row.waist_last_cm != null ? 'primeira medida' : 'sem medida'} />
       <Stat label="Kcal (média)" value={row.kcal_avg != null ? intFmt(row.kcal_avg) : '—'}

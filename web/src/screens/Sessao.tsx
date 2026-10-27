@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft, Check, ChevronLeft, ChevronRight, Info, Minus, PlayCircle, Plus, SkipForward, Timer, Trophy, Undo2,
+  ArrowLeft, Check, ChevronLeft, ChevronRight, Info, Minus, PencilLine, PlayCircle, Plus, SkipForward, Timer, Trophy, Undo2,
 } from 'lucide-react'
 import {
   useDeleteSession, useDeleteSet, useFinishSession, useLogSet, usePrevBests, usePrevSets, useSession,
@@ -222,7 +222,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-line font-semibold tabular-nums" aria-hidden="true">{n}</span>
                   <span>Série {n}</span>
-                  <span className="ml-auto tabular-nums">{d.kg ? `${kgFmt(d.kg)} kg` : '—'} × {d.reps ?? '—'}{unitSuffix(te)}</span>
+                  <span className="ml-auto tabular-nums">{d.kg ? `${kgFmt(d.kg)} kg × ` : ''}{d.reps != null ? `${d.reps}${unitSuffix(te) || ' reps'}` : ''}</span>
                 </button>
               </li>
             )
@@ -230,7 +230,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
           return (
             <li key={n} className="rounded-[var(--radius-card)] bg-card-2 p-4 ring-1 ring-lime/30">
               <p className="text-[15px] font-medium text-muted">Série {n} de {rowCount}</p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="mt-3 grid grid-cols-1 gap-2">
                 <Stepper
                   label="Carga" unit="kg" value={d.kg} step={2.5} min={0} format={(v) => (v ? kgFmt(v) : 'corpo')}
                   onChange={(kg) => setDraft(n, { ...d, kg })}
@@ -355,11 +355,11 @@ function Stepper({ label, unit, value, step, min, format, onChange }: {
   const v = value ?? 0
   const bump = (d: number) => { haptic(8); onChange(Math.max(min, Math.round((v + d) * 100) / 100)) }
   return (
-    <div className="rounded-2xl bg-bg/70 p-2 ring-1 ring-line">
-      <p className="px-1 text-xs font-medium text-muted">{label}{unit !== 'reps' && <span className="text-muted/80"> ({unit})</span>}</p>
-      <div className="mt-1 flex items-center justify-between gap-1">
+    <div className="flex items-center gap-2 rounded-2xl bg-bg/70 p-2 ring-1 ring-line">
+      <p className="w-16 shrink-0 pl-2 text-sm font-medium text-muted">{label}{unit !== 'reps' && <span className="block text-xs text-muted/80">{unit}</span>}</p>
+      <div className="flex flex-1 items-center justify-between gap-1">
         <button type="button" onClick={() => bump(-step)} aria-label={`Diminuir ${label.toLowerCase()} em ${num(step, step % 1 ? 1 : 0)}`}
-          className="flex h-14 w-12 items-center justify-center rounded-xl bg-card-2 text-fg active:scale-95">
+          className="flex h-14 w-16 items-center justify-center rounded-xl bg-card-2 text-fg active:scale-95">
           <Minus size={22} aria-hidden="true" />
         </button>
         {editing ? (
@@ -373,11 +373,11 @@ function Stepper({ label, unit, value, step, min, format, onChange }: {
         ) : (
           <button type="button" onClick={() => setEditing(true)} aria-label={`${label}: ${value == null ? 'vazio' : format(v)} ${unit}. Tocar para digitar.`}
             className="h-14 min-w-0 flex-1 rounded-xl text-center text-[28px] font-bold tabular-nums leading-none">
-            {value == null ? <span className="text-base font-medium text-muted">digitar</span> : format(v)}
+            {value == null ? <PencilLine size={22} className="mx-auto text-muted" aria-hidden="true" /> : format(v)}
           </button>
         )}
         <button type="button" onClick={() => bump(step)} aria-label={`Aumentar ${label.toLowerCase()} em ${num(step, step % 1 ? 1 : 0)}`}
-          className="flex h-14 w-12 items-center justify-center rounded-xl bg-card-2 text-fg active:scale-95">
+          className="flex h-14 w-16 items-center justify-center rounded-xl bg-card-2 text-fg active:scale-95">
           <Plus size={22} aria-hidden="true" />
         </button>
       </div>
@@ -471,8 +471,8 @@ function Resumo({ id }: { id: string }) {
       </div>
 
       <Card tone="raised">
-        <dl className="grid grid-cols-3 gap-2">
-          <Stat label="Volume" value={intFmt(s.volume_kg)} unit="kg" hero />
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-4">
+          <div className="col-span-2"><Stat label="Volume total" value={intFmt(s.volume_kg)} unit="kg" hero /></div>
           <Stat label="Séries" value={String(s.n_sets)} />
           <Stat label="Duração" value={s.duration_min != null ? String(s.duration_min) : '—'} unit={s.duration_min != null ? 'min' : undefined} />
         </dl>
@@ -504,7 +504,8 @@ function Resumo({ id }: { id: string }) {
                   <span className="block truncate font-medium">{r.exercise_name}</span>
                   <span className="block text-sm text-muted">{r.n_sets} séries · {intFmt(r.volume_kg)} kg{r.top_e1rm ? ` · 1RM est. ${kgFmt(Math.round(r.top_e1rm))} kg` : ''}</span>
                 </span>
-                <span className="shrink-0 text-lg font-semibold tabular-nums">{r.top_kg ? `${kgFmt(r.top_kg)} × ${r.top_reps}` : '—'}</span>
+                {r.top_kg ? <span className="shrink-0 text-lg font-semibold tabular-nums">{kgFmt(r.top_kg)} × {r.top_reps}</span>
+                  : <span className="shrink-0 text-right text-[13px] leading-snug text-muted">acima de 12 reps<br />(fora do 1RM)</span>}
               </li>
             ))}
           </ul>
@@ -524,7 +525,7 @@ function Stat({ label, value, unit, hero }: { label: string; value: string; unit
     <div>
       <dt className="text-sm text-muted">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-1">
-        <span className={`${hero ? 'text-[32px] text-lime' : 'text-[28px]'} font-bold leading-none tabular-nums`}>{value}</span>
+        <span className={`${hero ? 'text-[44px] text-lime' : 'text-[28px]'} font-bold leading-none tracking-[-0.02em] tabular-nums`}>{value}</span>
         {unit && <span className="text-sm text-muted">{unit}</span>}
       </dd>
     </div>
