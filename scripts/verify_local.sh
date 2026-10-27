@@ -57,15 +57,18 @@ expect_eq "25 exercícios"                 postgres - "select count(*) from exer
 expect_eq "fichas: linhas por ficha"       postgres - "select string_agg(t.slug || '=' || (select count(*) from template_exercises te where te.template_id = t.id), ',' order by t.slug) from workout_templates t" \
   "inferiores_a=6,inferiores_b=7,superior_a=6,superior_b=7"
 expect_eq "main lifts"                     postgres - "select count(*) from exercises where main_lift" 11
-expect_eq "9 slots base, domingo vazio"    postgres - "select count(*) || '/' || count(*) filter (where weekday = 7) from schedule_slots" "9/0"
-expect_eq "4 exceções da semana"           postgres - "select count(*) from schedule_overrides" 4
+expect_eq "8 slots ativos, domingo vazio"  postgres - "select count(*) filter (where active) || '/' || count(*) filter (where weekday = 7) from schedule_slots" "8/0"
+expect_eq "3 exceções da semana"           postgres - "select count(*) from schedule_overrides" 3
 expect_eq "goals"                          postgres - "select deficit_kcal || ' ' || protein_g_per_kg_min || '-' || protein_g_per_kg_max || ' ' || max_loss_pct_week from goals" "300 2.0-2.2 0.50"
-expect_eq "ter 27/10: crossfit + jiu experimental" postgres - \
+expect_eq "ter 27/10: crossfit (sem jiu-jitsu)" postgres - \
   "select string_agg(to_char(start_time,'HH24:MI') || ' ' || title || ' ' || modality || ' ' || plan_kind, ' | ' order by start_time) from plan_between('2026-10-27','2026-10-27')" \
-  "06:00 Crossfit cross substituido | 19:00 Jiu-jitsu (experimental) jiu_jitsu substituido"
-expect_eq "qua 28/10: inferiores A 6h, cross pulado" postgres - \
+  "06:00 Crossfit cross substituido"
+expect_eq "qua 28/10: inferiores A 6h + cross" postgres - \
   "select string_agg(to_char(start_time,'HH24:MI') || ' ' || title || ' ' || plan_kind || ' ' || active || ' ' || exercise_count, ' | ' order by start_time) from plan_with_sessions('2026-10-28','2026-10-28')" \
-  "06:00 Inferiores A adicionado true 6 | 20:00 Cross training pulado false 0"
+  "06:00 Inferiores A adicionado true 6 | 20:00 Cross training base true 0"
+expect_eq "qui 29/10: muay pulado"         postgres - \
+  "select string_agg(to_char(start_time,'HH24:MI') || ' ' || title || ' ' || plan_kind || ' ' || active, ' | ' order by start_time) from plan_with_sessions('2026-10-29','2026-10-29')" \
+  "06:00 Superior B base true | 20:00 Muay thai pulado false"
 expect_eq "seg 02/11 volta à grade base"   postgres - \
   "select string_agg(title, ',' order by start_time) from plan_between('2026-11-02','2026-11-02')" "Superior A,Muay thai"
 
