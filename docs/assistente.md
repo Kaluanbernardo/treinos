@@ -61,4 +61,4 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
   (revisar dieta e treino); cintura ↑ = alerta. Recalcular kcal a cada 2 semanas pela tendência de peso e cintura.
 - **Se faltar treino:** musculação é prioridade (musc > muay > jiu > cross > funcional); nunca 2 pernas seguidos; nunca 2 h seguidas;
   sessão perdida → próximo horário livre (`fit move`). Streak é por semana cumprida: remarcar não quebra; nunca incentivar treinar doente.
-- **Mensal:** checar os links de vídeo (`exercises.video_url`) pelo oEmbed do YouTube e avisar se algum cair.
+- **Mensal:** `fit videos` confere os links de vídeo pelo oEmbed do YouTube; avisar se algum cair.

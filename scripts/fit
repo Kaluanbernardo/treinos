@@ -14,6 +14,7 @@ LEITURA
   fit food <busca> [--limit 8]                busca TACO/custom (sem acento, por similaridade)
   fit notes [--limit 10]                      últimas notas do assistente
   fit sessions [--limit 10]                   últimas sessões (v_sessions)
+  fit videos                                  confere os links de vídeo pelo oEmbed (checagem mensal)
   fit sql "<SELECT ...>"                      SQL livre como bot (um comando)
 
 TREINO
@@ -662,6 +663,25 @@ def cmd_water(a):
              f"on conflict (date) do update set water_ml = excluded.water_ml, source = 'bot' returning date, water_ml"))
 
 
+def cmd_videos(a):
+    """Confere cada exercises.video_url pelo oEmbed do YouTube (HTTP 200 = ok)."""
+    bad = 0
+    for r in bot("select slug, name, video_url from exercises order by name"):
+        if not r["video_url"]:
+            print(f"SEM   {r['slug']}")
+            bad += 1
+            continue
+        q = "https://www.youtube.com/oembed?format=json&url=" + urllib.parse.quote(r["video_url"], safe="")
+        try:
+            code = urllib.request.urlopen(urllib.request.Request(q, headers={"User-Agent": "Mozilla/5.0"}), timeout=20).status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        print(f"{'ok ' if code == 200 else 'FALHA'} {code} {r['slug']} {r['video_url']}")
+        bad += code != 200
+    if bad:
+        sys.exit(f"{bad} link(s) com problema: avisar o Kaluan no chat")
+
+
 def cmd_note(a):
     if len(a) != 2 or a[0] not in NOTE_KINDS:
         sys.exit(f'uso: fit note <{"|".join(NOTE_KINDS)}> "<texto>"')
@@ -674,7 +694,7 @@ COMMANDS = {
     "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga,
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
     "meal-del": cmd_meal_del, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
-    "water": cmd_water, "note": cmd_note,
+    "water": cmd_water, "note": cmd_note, "videos": cmd_videos,
 }
 
 
