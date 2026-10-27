@@ -44,11 +44,12 @@ insert into public.exercises (slug, name, muscle_group, main_lift, tips) values
   ('leg_press_45',           'Leg press 45°',                  'quadríceps',       true,  'Lombar colada no encosto; não trave os joelhos no topo.'),
   ('afundo_bulgaro',         'Afundo búlgaro',                 'quadríceps',       false, 'Pé de trás no banco; desça vertical, joelho da frente alinhado ao pé.'),
   ('cadeira_extensora',      'Cadeira extensora',              'quadríceps',       false, 'Segure 1 s em cima; desça controlado.'),
+  ('afundo',                 'Afundo',                         'quadríceps',       false, 'Passo longo, calcanhar de trás elevado; desça vertical até o joelho de trás quase tocar o chão, joelho da frente alinhado ao pé.'),
   ('mesa_flexora',           'Mesa flexora',                   'posterior de coxa',false, 'Quadril colado no banco; suba sem tirar o quadril.'),
   ('panturrilha_em_pe',      'Panturrilha em pé',              'panturrilha',      false, 'Amplitude total; pausa 1 s embaixo (alongado).'),
   ('terra_romeno',           'Terra romeno',                   'posterior de coxa',true,  'Quadril vai para trás, barra rente às pernas, coluna neutra. Pare ao sentir o posterior alongar.'),
   ('hip_thrust',             'Hip thrust',                     'glúteos',          true,  'Queixo recolhido, costelas para baixo; pausa 1 s no topo apertando o glúteo.'),
-  ('flexora',                'Flexora',                        'posterior de coxa',false, 'Movimento controlado; não deixe o quadril subir.'),
+  ('flexora',                'Cadeira flexora',                'posterior de coxa',false, 'Movimento controlado; não deixe o quadril subir.'),
   ('goblet_ou_hack',         'Goblet ou hack',                 'quadríceps',       false, 'Tronco alto, desça entre as pernas; joelhos acompanham os pés.'),
   ('panturrilha_sentado',    'Panturrilha sentado',            'panturrilha',      false, 'Pausa embaixo, suba o máximo possível.'),
   ('farmers_walk',           'Farmer''s walk',                 'pegada',           false, 'Ombros para trás e para baixo, passos curtos e firmes.'),
@@ -90,9 +91,9 @@ with rows (tpl, pos, ex, sets, rmin, rmax, unit, per_side, rir, rest_min, rest_m
   -- Inferiores A
   ('inferiores_a', 1, 'agachamento_livre',      4, 6,  8,  'reps', false, '2–3',             150, 180, null),
   ('inferiores_a', 2, 'leg_press_45',           3, 10, 12, 'reps', false, '2',               120, 120, null),
-  ('inferiores_a', 3, 'afundo_bulgaro',         2, 8,  10, 'reps', true,  '2',               90,  90,  null),
+  ('inferiores_a', 3, 'afundo',                 2, 8,  10, 'reps', true,  '2',               90,  90,  null),
   ('inferiores_a', 4, 'cadeira_extensora',      3, 12, 15, 'reps', false, '1',               60,  60,  'Segurar 1 s.'),
-  ('inferiores_a', 5, 'mesa_flexora',           2, 10, 12, 'reps', false, '2',               60,  60,  null),
+  ('inferiores_a', 5, 'flexora',                2, 10, 12, 'reps', false, '2',               60,  60,  null),
   ('inferiores_a', 6, 'panturrilha_em_pe',      3, 10, 15, 'reps', false, null,              60,  60,  'Pausa 1 s.'),
   -- Inferiores B
   ('inferiores_b', 1, 'terra_romeno',           4, 6,  8,  'reps', false, '2',               150, 150, null),
@@ -163,5 +164,8 @@ select '2026-10-29', 'skip', s.id,
 from public.schedule_slots s
 where s.weekday = 4 and s.start_time = '20:00'
   and not exists (select 1 from public.schedule_overrides o where o.date = '2026-10-29' and o.slot_id = s.id);
+
+-- Vídeo do afundo (exercício criado depois da migration de vídeos; conferido pelo oEmbed em 27/10/2026).
+update public.exercises set video_url = 'https://www.youtube.com/watch?v=xn9x5RXbTK4' where slug = 'afundo';
 
 commit;
