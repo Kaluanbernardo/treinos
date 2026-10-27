@@ -321,7 +321,7 @@ Tactile, heavy and bottom-weighted.
 - **Focus:** the border turns lime; inline stepper editing uses a 2px lime ring.
 
 ### Navigation
-Five tabs (Hoje, Treino, Evolução, Nutrição, Agenda) in a sticky bar: `bg` at 92% with backdrop blur and a top hairline. 64px targets, 24px icon over a 12px medium label. Active is lime, with a 2.4 stroke and a 32×2px lime bar at the top edge; inactive is `muted`.
+Five tabs (Hoje, Treino, Evolução, Nutrição, Agenda) in a sticky bar: `bg` at 92% with backdrop blur and a top hairline. 64px targets, 22px icon over a 12px medium label. Active: the icon sits in a 56×32 `lime`/15 pill with a lime 2.4 stroke and the label turns `fg`; inactive is `muted`.
 
 ### Recomposition Triad (signature)
 Three equal cells (Peso · Cintura · Força) on an inset `bg`/60 panel with a 16px radius, a hairline ring and hairline dividers. Each cell: 13px label, then a drawn arrow (22–26px, 2.5 stroke) plus a word ("caindo / estável / subindo"), coloured `ok` when moving the good way, `warn` when moving the wrong way, `fg` when flat; then a 13px tabular delta. With no data, the cell shows an hourglass plus when the arrow will appear ("seta em 12/11", "sem pesagem"). It is the same component on Hoje and Evolução.
@@ -342,10 +342,21 @@ SVG ring with a `line` track, a round-capped arc in the metric colour, and value
 
 ### States
 - **Coletando dados:** a 16px-radius dashed `line` outline with an hourglass, a plain sentence of what is missing, and an optional segmented progress bar (lime collected, `line` remaining) with "N de M registros · faltam K". It replaces the chart; never draw an empty axis.
-- **Loading:** skeleton blocks at card radius, shimmering `card` → `card-2` over 1.4s.
+- **Loading:** flat `card` blocks at card radius and final size, pulsing opacity over 1.4s (no shimmer gradient).
 - **Error:** `role="alert"` panel, `err` 8% fill and 30% border, warning icon plus "Não consegui carregar …", an offline-aware sub-line, and a secondary "Tentar de novo" button.
 - **Toast:** `card-2`, hairline (lime or err border by tone), 15px text, optional lime text action; slides up in 220ms.
 - **Sheet:** native dialog bottom sheet, `card`, 24px top radius, a grab handle, `black`/60 backdrop, rises in 260ms.
+
+### Visual primitives (`web/src/components/viz.tsx`, inline SVG)
+Copy is the last resort: a number, a mark or a bar says it first, and at most one short line explains.
+- **Rings:** concentric arcs (outside → in), track = the arc's own hue at 16%, round caps; Hoje uses treinos (lime) · kcal · proteína. Single rings (`Ring.tsx`) for kcal, session progress, rest countdown and finish %.
+- **Meter:** 6–8px pill bar at the true ratio; a 2px `fg` tick marks a single target, an `ok`/25 band marks a min–max range; overshoot past a tick turns `warn`.
+- **Spark:** 2px line in the metric hue, 15% fade, last point dotted; never drawn with fewer than 2 points (3 on Hoje).
+- **Delta:** drawn arrow + signed value; `ok` when moving the good way, `warn` the wrong way, `muted` when flat.
+- **Big:** the protagonist numeral (56 / 44 / 32 / 24px, bold, tabular) with a `muted` unit.
+- **WeekStrip:** Mon–Sun columns; today is a lime disc, a fully done day an `ok` check, one pip per activity (dot = feito, ring = a fazer/sem registro, ✕ icon = faltou, dash = pulado).
+- **PlanBars:** weekly columns, track = planned, fill = done; the current week is lime, past weeks `muted`.
+- **DateTile:** 56px "Qua / 28" tile, lime when it is today.
 
 ### Motion
 One easing, `cubic-bezier(0.16, 1, 0.3, 1)`. State transitions take 150ms; rings, bars and charts grow over 500–600ms. Confirmations: check pop 320ms, PR seal 520ms, live dot pulse 1.8s. `prefers-reduced-motion` zeroes all durations.
