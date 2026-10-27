@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { supabase } from './supabase'
 import { todaySP } from './format'
 import type {
-  BodyMetric, BotNote, DailyNutrition, ExerciseSession, FoodLog, MonthlySummary, MuscleVolumeWeek,
+  BodyMetric, BotNote, DailyNutrition, ExerciseSession, ExerciseStatus, FoodLog, MonthlySummary, MuscleVolumeWeek,
   NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, Recomposition,
   SessionRow, SessionStatus, SetLog, Streak, Template, WeightPoint,
 } from './types'
@@ -76,9 +76,10 @@ export const useActiveSession = () =>
 export const useSession = (id: string) =>
   useQuery({ queryKey: ['session', id], queryFn: () => one<SessionRow>(db().from('v_sessions').select('*').eq('id', id)) })
 
-export const useSessionSets = (id: string) =>
+export const useSessionSets = (id: string | null) =>
   useQuery({
     queryKey: ['sets', id],
+    enabled: !!id,
     queryFn: () => rows<SetLog>(db().from('set_logs').select('*').eq('session_id', id).order('logged_at')),
   })
 
@@ -89,9 +90,10 @@ export const usePrevSets = (id: string) =>
     queryFn: () => rows<PrevSet>(db().rpc('prev_sets', { p_session: id })),
   })
 
-export const usePrevBests = (id: string) =>
+export const usePrevBests = (id: string | null) =>
   useQuery({
     queryKey: ['prev_bests', id],
+    enabled: !!id,
     staleTime: Infinity,
     queryFn: () => rows<PrevBest>(db().rpc('prev_bests', { p_session: id })),
   })
@@ -107,6 +109,51 @@ export const useSessionPrs = (id: string) =>
     queryKey: ['session_prs', id],
     queryFn: () => rows<PrRow>(db().from('v_prs').select('*').eq('session_id', id).eq('is_pr', true)),
   })
+
+/**
+ * Exercícios pulados da sessão. Antes da migração 20261028180000 a tabela não existe: devolve vazio
+ * em vez de derrubar a tela do treino.
+ */
+export const useSkips = (id: string | null) =>
+  useQuery({
+    queryKey: ['skips', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await db().from('session_exercise_status').select('session_id, exercise_id, skipped').eq('session_id', id!)
+      if (error) {
+        if (/session_exercise_status|PGRST205|42P01/.test(`${error.message} ${(error as { code?: string }).code ?? ''}`)) return new Set<string>()
+        throw new Error(error.message)
+      }
+      return new Set((data as ExerciseStatus[]).filter((r) => r.skipped).map((r) => r.exercise_id))
+    },
+  })
+
+/** Pular / desfazer pular um exercício (upsert por sessão + exercício). */
+export function useSkipExercise() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: ExerciseStatus) => {
+      const { error } = await db().from('session_exercise_status')
+        .upsert({ session_id: v.session_id, exercise_id: v.exercise_id, skipped: v.skipped, source: 'app' }, { onConflict: 'session_id,exercise_id' })
+      if (error) throw new Error(error.message)
+    },
+    onMutate: async (v) => {
+      const key = ['skips', v.session_id]
+      await qc.cancelQueries({ queryKey: key })
+      const prev = qc.getQueryData<Set<string>>(key)
+      const next = new Set(prev)
+      if (v.skipped) next.add(v.exercise_id); else next.delete(v.exercise_id)
+      qc.setQueryData(key, next)
+      return { prev }
+    },
+    onError: (_e, v, ctx) => qc.setQueryData(['skips', v.session_id], ctx?.prev),
+    onSettled: (_d, _e, v) => {
+      qc.invalidateQueries({ queryKey: ['skips', v.session_id] })
+      qc.invalidateQueries({ queryKey: ['session', v.session_id] })
+      qc.invalidateQueries({ queryKey: ['v_sessions'] })
+    },
+  })
+}
 
 /** Invalida tudo que depende de sessões/séries (Hoje, Agenda, Evolução). */
 export function invalidateTraining(qc: QueryClient) {
@@ -186,9 +233,9 @@ export function useFinishSession() {
   })
 }
 
-export function useLogSet(sessionId: string) {
+/** Registra uma série. A chave do cache vem da própria série: funciona logo após criar a sessão. */
+export function useLogSet() {
   const qc = useQueryClient()
-  const key = ['sets', sessionId]
   return useMutation({
     mutationFn: async (s: SetLog) => {
       const { error } = await db().from('set_logs').insert({
@@ -198,13 +245,17 @@ export function useLogSet(sessionId: string) {
       if (error) throw new Error(error.message)
     },
     onMutate: async (s) => {
+      const key = ['sets', s.session_id]
       await qc.cancelQueries({ queryKey: key })
       const prev = qc.getQueryData<SetLog[]>(key)
       qc.setQueryData<SetLog[]>(key, (old = []) => [...old, s])
       return { prev }
     },
-    onError: (_e, _s, ctx) => qc.setQueryData(key, ctx?.prev),
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onError: (_e, s, ctx) => qc.setQueryData(['sets', s.session_id], ctx?.prev),
+    onSettled: (_d, _e, s) => {
+      qc.invalidateQueries({ queryKey: ['sets', s.session_id] })
+      qc.invalidateQueries({ queryKey: ['active_session'] })
+    },
   })
 }
 

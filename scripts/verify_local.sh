@@ -53,7 +53,7 @@ out="$("$ROOT/scripts/apply_migrations.sh" 2>&1)" || true
 grep -q 'migrations novas: 0' <<<"$out" && ok "reaplicar: nada novo, seed idempotente" || fail "reaplicar" "$out"
 
 echo "== seed"
-expect_eq "25 exercícios"                 postgres - "select count(*) from exercises" 25
+expect_eq "26 exercícios"                 postgres - "select count(*) from exercises" 26
 expect_eq "fichas: linhas por ficha"       postgres - "select string_agg(t.slug || '=' || (select count(*) from template_exercises te where te.template_id = t.id), ',' order by t.slug) from workout_templates t" \
   "inferiores_a=6,inferiores_b=7,superior_a=6,superior_b=7"
 expect_eq "main lifts"                     postgres - "select count(*) from exercises where main_lift" 11
@@ -106,7 +106,23 @@ expect_eq "prev_sets não devolve a sessão excluída" bot - \
   "with s as (select session_id from set_logs order by logged_at desc limit 1) select count(*) from s, prev_sets(s.session_id) p where p.session_id = s.session_id" 0
 expect_eq "v_sessions: volume = soma das séries" bot - \
   "select count(*) from v_sessions v where v.volume_kg <> (select coalesce(sum(coalesce(kg,0)*coalesce(reps,0)),0) from set_logs sl where sl.session_id = v.id and not sl.warmup)" 0
-expect_eq "TACO: 597 alimentos"             bot - "select count(*) from foods where code like 'taco:%'" 597
+# pular exercício: upsert idempotente, desfazer, n_skipped em v_sessions e cascade ao apagar a sessão (tudo em rollback)
+SKIP_SEQ="with s as (select id from sessions where status = 'feito' and template_id is not null order by date desc limit 1),
+  e as (select te.exercise_id from template_exercises te join sessions x on x.template_id = te.template_id where x.id = (select id from s) order by te.position limit 2)
+  insert into session_exercise_status (session_id, exercise_id, skipped, source) select (select id from s), exercise_id, true, 'app' from e
+  on conflict (session_id, exercise_id) do update set skipped = excluded.skipped"
+expect_eq "pular: default skipped = false" postgres - \
+  "select column_default || ' ' || is_nullable from information_schema.columns where table_name = 'session_exercise_status' and column_name = 'skipped'" "false NO"
+expect_eq "pular: v_sessions.n_skipped conta só skipped = true" authenticated "$OWNER" \
+  "$SKIP_SEQ; $SKIP_SEQ; update session_exercise_status set skipped = false where id = (select id from session_exercise_status order by exercise_id limit 1); select sum(n_skipped) from v_sessions" "1"
+expect_eq "pular: sessões antigas sem linha = 0 pulados" bot - "select count(*) from v_sessions where n_skipped <> 0" 0
+expect_eq "pular: apagar a sessão apaga o estado (cascade)" authenticated "$OWNER" \
+  "$SKIP_SEQ; delete from sessions where id in (select session_id from session_exercise_status); select count(*) from session_exercise_status" 0
+expect_ok   "bot: upsert session_exercise_status" bot - "$SKIP_SEQ"
+expect_deny "anon: session_exercise_status negado" anon - "select count(*) from session_exercise_status"
+expect_deny "outro: INSERT session_exercise_status bloqueado" authenticated "$OTHER" \
+  "insert into session_exercise_status (session_id, exercise_id) values (gen_random_uuid(), gen_random_uuid())"
+expect_eq "TACO: 597 alimentos"           bot - "select count(*) from foods where code like 'taco:%'" 597
 expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
 expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"
 expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1
@@ -174,7 +190,7 @@ expect_eq   "anon: nenhuma tabela/view com privilégio" postgres - \
   "select count(*) from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public'" 0
 
 echo "== authenticated"
-expect_eq   "dono: vê 25 exercícios"          authenticated "$OWNER" "select count(*) from exercises" 25
+expect_eq   "dono: vê 26 exercícios"          authenticated "$OWNER" "select count(*) from exercises" 26
 expect_eq   "dono: is_owner() = true"         authenticated "$OWNER" "select public.is_owner()" t
 expect_ok   "dono: INSERT bot_notes"          authenticated "$OWNER" "insert into bot_notes (text, source) values ('do app', 'app')"
 expect_eq   "outro: vê 0 exercícios"          authenticated "$OTHER" "select count(*) from exercises" 0
@@ -193,7 +209,7 @@ f="$SECRETS_DIR/fitness_bot_db_url"
 [[ "$(stat -c %a "$f")" == 600 ]] && ok "arquivo da URL do bot com chmod 600" || fail "chmod do arquivo do bot"
 # a URL gerada aponta para socket; o login real por senha é testado via TCP
 botpw="$(sed -E 's#^[^:]+://[^:]+:([^@]+)@.*#\1#' "$f")"
-if r="$(PGPASSWORD="$botpw" psql "host=127.0.0.1 port=$PORT dbname=fitness user=bot" -X -At -c "select count(*) from exercises" 2>&1)" && [[ "$r" == 25 ]]; then
+if r="$(PGPASSWORD="$botpw" psql "host=127.0.0.1 port=$PORT dbname=fitness user=bot" -X -At -c "select count(*) from exercises" 2>&1)" && [[ "$r" == 26 ]]; then
   ok "bot loga por TCP com a senha gerada (scram)"
 else fail "login do bot" "$r"; fi
 if r="$(PGPASSWORD="$botpw" psql "host=127.0.0.1 port=$PORT dbname=fitness user=bot" -X -At -c "create table hack(i int)" 2>&1)"; then

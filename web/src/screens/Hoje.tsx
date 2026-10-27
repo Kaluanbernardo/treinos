@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import {
-  Ban, Check, ChevronRight, Clock, Dumbbell, Flame, Hourglass, Moon, NotebookText, Play, SlidersHorizontal, Timer, Trophy, X,
+  Ban, Check, ChevronRight, Clock, Dumbbell, Flame, Hourglass, Moon, NotebookText, PencilLine, Play, SlidersHorizontal, Timer, Trophy, X,
 } from 'lucide-react'
 import {
   useActiveSession, useBodyMetrics, useDailyNutrition, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
-  useNutritionTargets, usePrs, useRecomposition, useStartSession, useStreaks, useToday, useToggleCreatine, useWeek, useWeightTrend,
+  useNutritionTargets, usePrs, useRecomposition, useStartSession, useStreaks, useTemplates, useToday, useToggleCreatine, useWeek,
+  useWeightTrend,
 } from '../lib/api'
 import { go } from '../lib/router'
-import type { PlanItem } from '../lib/types'
+import type { PlanItem, Template } from '../lib/types'
 import { capitalize, dMon, hhmm, intFmt, kgFmt, num, todaySP, wdShort, addDays, weekStart } from '../lib/format'
 import { weekDays } from '../lib/week'
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
 import { SummaryCard } from '../components/SummaryCard'
+import { FichaSheet } from '../components/FichaSheet'
 import { CreatineButton } from './Nutricao'
 import { Big, DateTile, Delta, Rings, Spark, WeekStrip } from '../components/viz'
 
@@ -24,7 +26,13 @@ export function Hoje() {
   const week = useWeek()
   const active = useActiveSession()
   const notes = useNotes()
+  const templates = useTemplates()
   const now = useNow()
+  const [ficha, setFicha] = useState<Template | null>(null)
+  const openFicha = (templateId: string | null) => {
+    const t = templates.data?.find((x) => x.id === templateId)
+    if (t) setFicha(t); else toast('Ficha ainda carregando. Tente de novo.', { tone: 'err' })
+  }
 
   const items = today.data ?? []
   const pending = items.filter((i) => i.active && !LOGGED.has(i.session_status ?? '') && Date.parse(i.ends_at) > now)
@@ -33,6 +41,9 @@ export function Hoje() {
   const next = (week.data ?? []).find((i) => i.active && !i.session_status && i.date > todayIso)
   const lastSeenNote = Number(localStorage.getItem('notes_seen_at') ?? 0)
   const unread = (notes.data ?? []).filter((n) => Date.parse(n.created_at) > lastSeenNote).length
+  // musculação de hoje fora do cartão principal (ex.: o horário das 6h já passou): ainda dá para registrar as cargas
+  const strengthToday = active.data ? undefined
+    : items.find((i) => i.active && i.modality === 'musculacao' && i.template_id && i.session_status !== 'faltou' && (!hero || key(i) !== key(hero)))
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,17 +65,20 @@ export function Hoje() {
       ) : today.isPending || active.isPending ? (
         <Skeleton className="h-56" />
       ) : active.data ? (
-        <ActiveSessionCard id={active.data.id} title={active.data.title} sets={active.data.n_sets} startedAt={active.data.started_at} />
+        <ActiveSessionCard id={active.data.id} title={active.data.title} sets={active.data.n_sets} startedAt={active.data.started_at}
+          onFicha={active.data.template_id ? () => openFicha(active.data!.template_id) : undefined} />
       ) : hero ? (
-        <AgoraCard item={hero} now={now} />
+        <AgoraCard item={hero} now={now} onFicha={() => openFicha(hero.template_id)} />
       ) : (
         <DayDoneCard next={next} />
       )}
+      {strengthToday && <FichaHojeCard item={strengthToday} onFicha={() => openFicha(strengthToday.template_id)} />}
 
       <EvolucaoCard />
       <SummaryCard />
       <DiaCard />
       <SemanaCard items={items} now={now} heroKey={hero ? key(hero) : null} next={next} />
+      <FichaSheet template={ficha} onClose={() => setFicha(null)} />
     </div>
   )
 }
@@ -106,7 +120,7 @@ function MetaRow({ parts }: { parts: { icon: React.ReactNode; text: string }[] }
 }
 
 // ---------------------------------------------------------------- Agora
-function AgoraCard({ item, now }: { item: PlanItem; now: number }) {
+function AgoraCard({ item, now, onFicha }: { item: PlanItem; now: number; onFicha: () => void }) {
   const start = useStartSession()
   const mark = useMarkSession()
   const del = useDeleteSession()
@@ -158,9 +172,14 @@ function AgoraCard({ item, now }: { item: PlanItem; now: number }) {
       {item.motivo && <p className="mt-2 line-clamp-2 text-[15px] text-muted">{item.motivo}</p>}
 
       {strength ? (
-        <Button variant="primary" size="xl" className="mt-5 w-full" onClick={onStart} disabled={start.isPending}>
-          <Play size={22} fill="currentColor" aria-hidden="true" /> {start.isPending ? 'Abrindo…' : 'Iniciar treino'}
-        </Button>
+        <div className="mt-5 flex flex-col gap-3">
+          <Button variant="primary" size="xl" onClick={onStart} disabled={start.isPending}>
+            <Play size={22} fill="currentColor" aria-hidden="true" /> {start.isPending ? 'Abrindo…' : 'Iniciar treino'}
+          </Button>
+          <Button size="lg" onClick={onFicha}>
+            <PencilLine size={20} aria-hidden="true" /> Registrar cargas na ficha
+          </Button>
+        </div>
       ) : (
         <div className="mt-5 grid grid-cols-2 gap-3">
           <Button variant="primary" size="xl" onClick={() => onMark('feito')} disabled={mark.isPending}>
@@ -199,7 +218,9 @@ function DayDoneCard({ next }: { next?: PlanItem }) {
   )
 }
 
-function ActiveSessionCard({ id, title, sets, startedAt }: { id: string; title: string; sets: number; startedAt: string | null }) {
+function ActiveSessionCard({ id, title, sets, startedAt, onFicha }: {
+  id: string; title: string; sets: number; startedAt: string | null; onFicha?: () => void
+}) {
   const min = startedAt ? Math.max(0, Math.round((Date.now() - Date.parse(startedAt)) / 60_000)) : null
   return (
     <Card tone="raised" className="ring-1 ring-lime/40">
@@ -211,9 +232,39 @@ function ActiveSessionCard({ id, title, sets, startedAt }: { id: string; title: 
           ...(min != null ? [{ icon: <Timer size={18} aria-hidden="true" />, text: `${min} min` }] : []),
         ]} />
       </div>
-      <Button variant="primary" size="xl" className="mt-5 w-full" onClick={() => go(`sessao/${id}`)}>
-        <Dumbbell size={22} aria-hidden="true" /> Continuar treino
-      </Button>
+      <div className="mt-5 flex flex-col gap-3">
+        <Button variant="primary" size="xl" onClick={() => go(`sessao/${id}`)}>
+          <Dumbbell size={22} aria-hidden="true" /> Continuar treino
+        </Button>
+        {onFicha && (
+          <Button size="lg" onClick={onFicha}>
+            <PencilLine size={20} aria-hidden="true" /> Registrar cargas na ficha
+          </Button>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+/** Musculação de hoje que não está no cartão principal: entrada direta para registrar cargas na ficha. */
+function FichaHojeCard({ item, onFicha }: { item: PlanItem; onFicha: () => void }) {
+  const logged = item.session_status === 'feito' || item.session_status === 'parcial'
+  return (
+    <Card className="flex items-center gap-3 py-4">
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${logged ? 'bg-ok/15 text-ok' : 'action-fill'}`} aria-hidden="true">
+        {logged ? <Check size={24} strokeWidth={3} /> : <Dumbbell size={22} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-lg font-semibold leading-tight">{item.title}</p>
+        <p className="text-[15px] tabular-nums text-muted">
+          {logged ? (item.session_status === 'parcial' ? 'parcial' : 'feito') : `${hhmm(item.start_time)} · ${item.exercise_count} exercícios`}
+        </p>
+      </div>
+      {logged && item.session_id ? (
+        <Button onClick={() => go(`sessao/${item.session_id}`)}>Resumo <ChevronRight size={18} aria-hidden="true" /></Button>
+      ) : (
+        <Button variant="primary" onClick={onFicha}><PencilLine size={18} aria-hidden="true" /> Registrar cargas</Button>
+      )}
     </Card>
   )
 }

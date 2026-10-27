@@ -1,13 +1,11 @@
 import { useState } from 'react'
-import { ChevronRight, Dumbbell, Flame, Play, Timer, Trophy } from 'lucide-react'
-import {
-  useActiveSession, useExerciseSessions, useSessions, useStartSession, useStreaks, useTemplates, useToday, useWeeklySummary,
-} from '../lib/api'
+import { ChevronRight, Dumbbell, Flame, Timer, Trophy } from 'lucide-react'
+import { useActiveSession, useSessions, useStreaks, useTemplates, useToday, useWeeklySummary } from '../lib/api'
 import { go } from '../lib/router'
 import type { SessionRow, Template } from '../lib/types'
 import { capitalize, diffDays, dm, intFmt, todaySP, wdShort, weekStart } from '../lib/format'
-import { Badge, Button, Card, ErrorState, Sheet, Skeleton, haptic, toast } from '../components/ui'
-import { FichaDetail, historyByExercise } from '../components/Ficha'
+import { Badge, Button, Card, ErrorState, Skeleton } from '../components/ui'
+import { FichaSheet } from '../components/FichaSheet'
 import { MODALITY } from '../components/modality'
 import { Big, PlanBars } from '../components/viz'
 
@@ -18,8 +16,6 @@ export function Treino() {
   const sessions = useSessions(40)
   const today = useToday()
   const active = useActiveSession()
-  const start = useStartSession()
-  const exHist = useExerciseSessions()
   const [open, setOpen] = useState<Template | null>(null)
   const [all, setAll] = useState(false)
 
@@ -28,18 +24,6 @@ export function Treino() {
   const todayStrength = (today.data ?? []).find((i) => i.active && i.template_id && i.modality === 'musculacao' && !i.session_status)
   const history = (sessions.data ?? []).filter((s) => s.status !== 'em_andamento')
   const shown = all ? history : history.slice(0, 8)
-
-  async function begin(t: Template) {
-    haptic(15)
-    if (active.data) { go(`sessao/${active.data.id}`); return }
-    const plan = todayStrength?.template_id === t.id ? todayStrength : null
-    try {
-      const id = await start.mutateAsync({ template_id: t.id, modality: t.modality, slot_id: plan?.slot_id, override_id: plan?.override_id })
-      go(`sessao/${id}`)
-    } catch (e) {
-      toast(`Não deu para iniciar: ${(e as Error).message}`, { tone: 'err' })
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,31 +109,7 @@ export function Treino() {
         </div>
       </section>
 
-      <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.name ?? ''}>
-        {open && (
-          <>
-            <dl className="grid grid-cols-3 divide-x divide-line rounded-2xl bg-bg/60 py-3 ring-1 ring-line">
-              {[
-                { l: 'exercícios', v: open.template_exercises.length },
-                { l: 'séries', v: open.template_exercises.reduce((n, te) => n + te.sets, 0) },
-                { l: 'minutos', v: `~${open.est_minutes ?? 60}` },
-              ].map((x) => (
-                <div key={x.l} className="px-3 text-center">
-                  <dd className="text-2xl font-bold tabular-nums">{x.v}</dd>
-                  <dt className="text-[13px] text-muted">{x.l}</dt>
-                </div>
-              ))}
-            </dl>
-            <div className="mt-3"><FichaDetail template={open} history={historyByExercise(exHist.data)} /></div>
-            <div className="sticky -bottom-5 -mx-5 mt-2 border-t border-line bg-card px-5 pt-4 pb-5">
-              <Button variant="primary" size="xl" className="w-full" onClick={() => begin(open)} disabled={start.isPending}>
-                <Play size={22} fill="currentColor" aria-hidden="true" />
-                {active.data ? 'Continuar treino em andamento' : `Iniciar ${open.name}`}
-              </Button>
-            </div>
-          </>
-        )}
-      </Sheet>
+      <FichaSheet template={open} onClose={() => setOpen(null)} />
     </div>
   )
 }

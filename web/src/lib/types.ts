@@ -128,6 +128,15 @@ export interface SessionRow {
   n_exercises: number
   volume_kg: number
   n_prs: number
+  /** exercícios pulados (migração 20261028180000; ausente antes dela) */
+  n_skipped?: number
+}
+
+/** session_exercise_status: estado por exercício dentro da sessão (sem linha = não pulado). */
+export interface ExerciseStatus {
+  session_id: string
+  exercise_id: string
+  skipped: boolean
 }
 
 export interface SetLog {

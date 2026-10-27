@@ -4,11 +4,12 @@ import {
 } from 'lucide-react'
 import {
   useDeleteSession, useDeleteSet, useFinishSession, useLogSet, usePrevBests, usePrevSets, useSession,
-  useSessionExercises, useSessionPrs, useSessionSets, useTemplates,
+  useSessionExercises, useSessionPrs, useSessionSets, useSkipExercise, useSkips, useTemplates,
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { PrevBest, PrevSet, SetLog, TemplateExercise } from '../lib/types'
 import { prFlagsFor } from '../lib/pr'
+import { sessionProgress } from '../lib/session'
 import { dm, intFmt, kgFmt, mmss, num, capitalize, restLabel, wdShort } from '../lib/format'
 import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton, haptic, toast } from '../components/ui'
 import { repsLabel } from '../components/Ficha'
@@ -48,12 +49,15 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   const sets = useSessionSets(id)
   const prev = usePrevSets(id)
   const bests = usePrevBests(id)
-  const logSet = useLogSet(id)
+  const logSet = useLogSet()
   const delSet = useDeleteSet(id)
+  const skips = useSkips(id)
+  const skip = useSkipExercise()
   const finish = useFinishSession()
   const discard = useDeleteSession()
 
   const logged = useMemo(() => (sets.data ?? []).filter((s) => !s.warmup), [sets.data])
+  const skipped = useMemo(() => skips.data ?? new Set<string>(), [skips.data])
   const [idx, setIdx] = useState<number | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [extra, setExtra] = useState<Record<string, number>>({})
@@ -62,18 +66,20 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   const [finishing, setFinishing] = useState(false)
   const [tips, setTips] = useState(false)
 
-  // abre no primeiro exercício com séries pendentes
-  useEffect(() => {
-    if (idx != null || !sets.data) return
-    const first = exercises.findIndex((te) => logged.filter((s) => s.exercise_id === te.exercises.id).length < te.sets)
-    setIdx(first === -1 ? exercises.length - 1 : first)
-  }, [sets.data, idx, exercises, logged])
+  const prog = sessionProgress(exercises, logged, skipped)
 
-  const planned = exercises.reduce((n, te) => n + te.sets, 0)
-  const doneCount = logged.length
+  // abre no primeiro exercício com séries pendentes (pulados não contam)
+  useEffect(() => {
+    if (idx != null || !sets.data || skips.isPending) return
+    const first = exercises.findIndex((te) => !skipped.has(te.exercises.id) && logged.filter((s) => s.exercise_id === te.exercises.id).length < te.sets)
+    setIdx(first === -1 ? exercises.length - 1 : first)
+  }, [sets.data, skips.isPending, idx, exercises, logged, skipped])
+
+  const planned = prog.target
+  const doneCount = prog.done
   const volume = logged.reduce((v, s) => v + (s.kg ?? 0) * (s.reps ?? 0), 0)
 
-  if (sets.isPending || prev.isPending || bests.isPending || idx == null) return <div className="pt-6"><Skeleton className="h-[70vh]" /></div>
+  if (sets.isPending || prev.isPending || bests.isPending || skips.isPending || idx == null) return <div className="pt-6"><Skeleton className="h-[70vh]" /></div>
   if (sets.isError) return <div className="pt-6"><ErrorState what="as séries" onRetry={() => sets.refetch()} /></div>
 
   const te = exercises[idx]
@@ -86,6 +92,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   const firstOpen = Array.from({ length: rowCount }, (_, i) => i + 1).find((n) => !exSets.some((s) => s.set_number === n))
   const current = focusSet[ex.id] && !exSets.some((s) => s.set_number === focusSet[ex.id]) ? focusSet[ex.id] : firstOpen
   const prFlags = prFlagsFor(exSets, exBest)
+  const isSkipped = skipped.has(ex.id)
 
   const keyOf = (n: number) => `${ex.id}:${n}`
   const defaultFor = (n: number): Draft => {
@@ -135,7 +142,21 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
     return p ? `${p.kg ? kgFmt(p.kg) : 'corpo'}×${p.reps}` : null
   }
   const nextEx = exercises[idx + 1]
-  const exDone = exSets.length >= te.sets
+  const exDone = exSets.length >= te.sets || isSkipped
+
+  function setSkip(exId: string, name: string, next: boolean) {
+    haptic(next ? [10, 40, 10] : 10)
+    skip.mutate({ session_id: id, exercise_id: exId, skipped: next }, {
+      onError: () => toast('Sem conexão: não salvou. Tente de novo.', { tone: 'err', ms: 6000 }),
+    })
+    if (!next) return
+    toast(`${name}: pulado.`, { action: { label: 'Desfazer', run: () => setSkip(exId, name, false) } })
+    // segue para o próximo exercício ainda aberto (depois deste; senão, o primeiro que sobrou)
+    const open = (i: number) => i !== idx && !prog.settled(exercises[i])
+    const after = exercises.findIndex((_, i) => i > idx! && open(i))
+    const any = after === -1 ? exercises.findIndex((_, i) => open(i)) : after
+    if (any !== -1) { setIdx(any); setTips(false); window.scrollTo({ top: 0 }) }
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-[calc(env(safe-area-inset-bottom)+132px)]">
@@ -154,20 +175,21 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
         </div>
         <nav aria-label="Exercícios" className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2">
           {exercises.map((t, i) => {
-            const n = logged.filter((s) => s.exercise_id === t.exercises.id).length
-            const complete = n >= t.sets
+            const n = prog.count(t.exercises.id)
+            const off = skipped.has(t.exercises.id)
+            const complete = !off && n >= t.sets
             const on = i === idx
             return (
               <button
                 key={t.id} type="button" onClick={() => { setIdx(i); setTips(false); window.scrollTo({ top: 0 }) }}
                 aria-current={on ? 'step' : undefined}
-                aria-label={`${t.exercises.name}: ${n} de ${t.sets} séries`}
+                aria-label={`${t.exercises.name}: ${off ? 'pulado' : `${n} de ${t.sets} séries`}`}
                 className={`flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold tabular-nums transition-colors duration-150 ${
-                  on ? 'bg-fg text-bg' : complete ? 'bg-lime/15 text-lime' : 'bg-card text-muted'}`}
+                  on ? 'bg-fg text-bg' : complete ? 'bg-lime/15 text-lime' : off ? 'border border-dashed border-line text-muted' : 'bg-card text-muted'}`}
               >
-                {complete ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : <span>{i + 1}</span>}
-                <span className="max-w-[9ch] truncate font-medium">{t.exercises.name.split(' ')[0]}</span>
-                {!complete && n > 0 && <span className={`text-xs ${on ? 'text-bg/60' : 'text-muted'}`}>{n}/{t.sets}</span>}
+                {complete ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : off ? <SkipForward size={15} aria-hidden="true" /> : <span>{i + 1}</span>}
+                <span className={`max-w-[9ch] truncate font-medium ${off ? 'line-through decoration-1' : ''}`}>{t.exercises.name.split(' ')[0]}</span>
+                {!complete && !off && n > 0 && <span className={`text-xs ${on ? 'text-bg/60' : 'text-muted'}`}>{n}/{t.sets}</span>}
               </button>
             )
           })}
@@ -231,6 +253,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
               </li>
             )
           }
+          if (isSkipped) return null
           const d = draftFor(n)
           if (n !== current) {
             return (
@@ -272,16 +295,32 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
         })}
       </ol>
 
-      <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" onClick={() => setExtra((e) => ({ ...e, [ex.id]: (e[ex.id] ?? 0) + 1 }))}>
-          <Plus size={18} aria-hidden="true" /> Série extra
-        </Button>
-        {(extra[ex.id] ?? 0) > 0 && rowCount > Math.max(te.sets, maxLogged) && (
-          <Button variant="ghost" onClick={() => setExtra((e) => ({ ...e, [ex.id]: Math.max(0, (e[ex.id] ?? 0) - 1) }))}>
-            <Minus size={18} aria-hidden="true" /> Remover extra
+      {isSkipped ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-3">
+          <SkipForward size={22} className="shrink-0 text-muted" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Exercício pulado</p>
+            <p className="text-sm tabular-nums text-muted">{exSets.length ? `${exSets.length} de ${te.sets} séries feitas` : 'Fora do treino de hoje'}</p>
+          </div>
+          <Button onClick={() => setSkip(ex.id, ex.name, false)}><Undo2 size={18} aria-hidden="true" /> Desfazer</Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" className="-ml-2" onClick={() => setExtra((e) => ({ ...e, [ex.id]: (e[ex.id] ?? 0) + 1 }))}>
+            <Plus size={18} aria-hidden="true" /> Série extra
           </Button>
-        )}
-      </div>
+          {(extra[ex.id] ?? 0) > 0 && rowCount > Math.max(te.sets, maxLogged) && (
+            <Button variant="ghost" onClick={() => setExtra((e) => ({ ...e, [ex.id]: Math.max(0, (e[ex.id] ?? 0) - 1) }))}>
+              <Minus size={18} aria-hidden="true" /> Remover
+            </Button>
+          )}
+          {exSets.length < te.sets && (
+            <Button className="ml-auto" onClick={() => setSkip(ex.id, ex.name, true)}>
+              <SkipForward size={18} aria-hidden="true" /> Pular exercício
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-[auto_1fr] gap-3">
         <Button size="lg" onClick={() => { setIdx(Math.max(0, idx - 1)); setTips(false); window.scrollTo({ top: 0 }) }} disabled={idx === 0} aria-label="Exercício anterior">
@@ -306,16 +345,22 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
           <div>
             <Big size="md" value={doneCount} unit={`/${planned} séries`} />
             <p className="mt-1 text-[15px] tabular-nums text-muted">{intFmt(volume)} kg de volume</p>
+            {prog.nSkipped > 0 && (
+              <p className="mt-1 flex items-center gap-1.5 text-[15px] tabular-nums text-muted">
+                <SkipForward size={16} aria-hidden="true" /> {prog.nSkipped} {prog.nSkipped === 1 ? 'exercício pulado' : 'exercícios pulados'}
+              </p>
+            )}
           </div>
         </div>
         <p className="mt-4 text-[15px] text-muted">
           {doneCount === 0 ? 'Nenhuma série registrada: dá para descartar.'
-            : doneCount / planned >= 0.8 ? 'Fica registrado como feito.' : 'Fica como parcial. Correções vão pelo chat.'}
+            : prog.status === 'feito' ? 'Fica registrado como feito.'
+              : prog.nSkipped > 0 ? 'Com exercício pulado, fica como parcial.' : 'Fica como parcial. Correções vão pelo chat.'}
         </p>
         <div className="mt-5 flex flex-col gap-3">
           <Button
             variant="primary" size="xl" disabled={doneCount === 0 || finish.isPending}
-            onClick={() => finish.mutate({ id, status: doneCount / planned >= 0.8 ? 'feito' : 'parcial' }, {
+            onClick={() => finish.mutate({ id, status: prog.status }, {
               onSuccess: () => { haptic([20, 40, 20]); setRest(null); setFinishing(false) },
               onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err' }),
             })}
@@ -456,6 +501,7 @@ function Resumo({ id }: { id: string }) {
   const session = useSession(id)
   const ex = useSessionExercises(id)
   const prs = useSessionPrs(id)
+  const skips = useSkips(id)
   const templates = useTemplates()
   const s = session.data!
   const tpl = templates.data?.find((t) => t.id === s.template_id)
@@ -463,6 +509,8 @@ function Resumo({ id }: { id: string }) {
   const planned = tpl?.template_exercises.reduce((n, t) => n + t.sets, 0) ?? 0
   const rows = [...(ex.data ?? [])].sort((a, b) => order.indexOf(a.exercise_id) - order.indexOf(b.exercise_id))
   const maxVol = Math.max(1, ...rows.map((r) => Number(r.volume_kg)))
+  const skippedEx = (tpl?.template_exercises ?? []).filter((t) => skips.data?.has(t.exercises.id) && !rows.some((r) => r.exercise_id === t.exercises.id))
+  const nSkipped = skips.data?.size ?? s.n_skipped ?? 0
   const prByEx = new Map<string, { kg: number; reps: number }>()
   for (const p of prs.data ?? []) {
     const cur = prByEx.get(p.exercise_id)
@@ -496,6 +544,7 @@ function Resumo({ id }: { id: string }) {
               {!planned && <div><dt className="text-[13px] text-muted">Séries</dt><dd className="text-xl font-bold tabular-nums">{s.n_sets}</dd></div>}
               <div><dt className="text-[13px] text-muted">Duração</dt><dd className="text-xl font-bold tabular-nums">{s.duration_min ?? '—'}<span className="text-sm font-medium text-muted"> min</span></dd></div>
               <div><dt className="text-[13px] text-muted">Recordes</dt><dd className={`text-xl font-bold tabular-nums ${prByEx.size ? 'text-lime' : ''}`}>{prByEx.size}</dd></div>
+              {nSkipped > 0 && <div><dt className="text-[13px] text-muted">Pulados</dt><dd className="text-xl font-bold tabular-nums">{nSkipped}</dd></div>}
             </dl>
           </div>
         </div>
@@ -520,7 +569,7 @@ function Resumo({ id }: { id: string }) {
           <h2 id="ex-res" className="text-lg font-semibold">Exercícios</h2>
           <span className="text-[13px] text-muted">barra = volume</span>
         </div>
-        {ex.isPending ? <Skeleton className="mt-3 h-40" /> : rows.length === 0 ? (
+        {ex.isPending ? <Skeleton className="mt-3 h-40" /> : rows.length === 0 && skippedEx.length === 0 ? (
           <p className="mt-2 text-muted">Nenhuma série com carga.</p>
         ) : (
           <ul className="mt-2 divide-y divide-line">
@@ -530,6 +579,7 @@ function Resumo({ id }: { id: string }) {
                   <span className="flex min-w-0 items-center gap-1.5 font-medium">
                     <span className="truncate">{r.exercise_name}</span>
                     {prByEx.has(r.exercise_id) && <span className="rounded-md action-fill px-1.5 py-0.5 text-[11px] font-black">PR</span>}
+                    {skips.data?.has(r.exercise_id) && <SkipForward size={15} className="shrink-0 text-muted" aria-label="pulado no meio" />}
                   </span>
                   {r.top_kg ? <span className="shrink-0 text-lg font-bold tabular-nums">{kgFmt(r.top_kg)} × {r.top_reps}</span>
                     : <span className="shrink-0 text-sm text-muted">+12 reps (sem 1RM)</span>}
@@ -542,6 +592,12 @@ function Resumo({ id }: { id: string }) {
                     {r.n_sets}× · {intFmt(r.volume_kg)} kg{r.top_e1rm ? ` · 1RM ${kgFmt(Math.round(r.top_e1rm))}` : ''}
                   </span>
                 </div>
+              </li>
+            ))}
+            {skippedEx.map((t) => (
+              <li key={t.id} className="flex min-h-12 items-center justify-between gap-3 py-3 text-muted">
+                <span className="truncate font-medium line-through decoration-1">{t.exercises.name}</span>
+                <Badge><SkipForward size={13} aria-hidden="true" /> pulado</Badge>
               </li>
             ))}
           </ul>

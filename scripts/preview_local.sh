@@ -9,6 +9,8 @@
 #   scripts/preview_local.sh down
 #
 # Sessão: o JWT do dono fica em /tmp/fitlocal/user.jwt (grave em localStorage['sb-127-auth-token']).
+# PREVIEW_ACTIVE=1 (padrão) cria um treino de ficha em andamento hoje (séries feitas + 1 exercício pulado);
+# PREVIEW_ACTIVE=0 deixa o dia sem treino aberto (cartão "Iniciar treino" / "Registrar cargas").
 # PostgREST: binário estático em $POSTGREST (padrão /tmp/pgrest_dl/postgrest, release v16 do GitHub).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +20,7 @@ L=/tmp/fitlocal
 OWNER=11111111-1111-1111-1111-111111111111
 DB="postgresql://postgres@/fitness?host=/tmp/pgtest&port=54329"
 PORT="${PREVIEW_PORT:-4174}"   # porta do preview (o build aponta o Supabase para ela)
+ACTIVE="${PREVIEW_ACTIVE:-1}"
 
 jwt() { # jwt <role> [sub]
   node -e '
@@ -59,6 +62,35 @@ insert into public.bot_notes (created_at, kind, text) values
   (now() - interval '3 days', 'alerta', 'Proteína abaixo de 164 g em 3 dias seguidos. Inclua um lanche com whey.'),
   (now() - interval '6 days', 'decisao', 'Déficit mantido em ~300 kcal: peso caindo 0,3%/sem, dentro do teto de 0,5%.');
 SQL
+    if [[ "$ACTIVE" == 1 ]]; then
+      psql "$DB" -X -q -v ON_ERROR_STOP=1 <<'SQL'
+-- treino em andamento de exemplo: a ficha de hoje (ou a primeira), 1º exercício completo, 2º com 1 série, 3º pulado
+do $$
+declare
+  p record; tpl uuid; sid uuid := gen_random_uuid(); te record;
+begin
+  select * into p from public.plan_between(public.today_sp(), public.today_sp())
+   where active and modality = 'musculacao' and template_id is not null order by start_time limit 1;
+  tpl := coalesce(p.template_id, (select id from public.workout_templates order by slug limit 1));
+  insert into public.sessions (id, date, modality, template_id, slot_id, override_id, status, started_at, source, note)
+  values (sid, public.today_sp(), 'musculacao', tpl, p.slot_id, p.override_id, 'em_andamento', now() - interval '24 minutes', 'app', 'synthetic');
+  for te in select t.exercise_id, t.position, t.sets, coalesce(t.reps_max, t.reps_min, 10) as reps,
+                   coalesce((select sl.kg from public.set_logs sl where sl.exercise_id = t.exercise_id and not sl.warmup
+                             order by sl.logged_at desc limit 1), t.carga_alvo, 20) as kg
+            from public.template_exercises t where t.template_id = tpl and t.position <= 3 order by t.position
+  loop
+    if te.position = 3 then
+      insert into public.session_exercise_status (session_id, exercise_id, skipped, source) values (sid, te.exercise_id, true, 'app');
+    else
+      insert into public.set_logs (session_id, exercise_id, set_number, kg, reps, logged_at, source)
+      select sid, te.exercise_id, n, te.kg, te.reps - (n - 1), now() - make_interval(mins => 24 - te.position * 8 - n * 2), 'app'
+      from generate_series(1, case when te.position = 1 then te.sets else 1 end) n;
+    end if;
+  end loop;
+end $$;
+SQL
+      echo "treino em andamento de exemplo criado (PREVIEW_ACTIVE=0 para desligar)"
+    fi
     head -c 48 /dev/urandom | base64 | tr -d '\n/+=' >"$L/secret"; chmod 600 "$L/secret"
     cat >"$L/pgrest.conf" <<EOF
 db-uri = "postgres://authenticator:localonly@127.0.0.1:54329/fitness"
@@ -92,5 +124,5 @@ EOF
     "$PGBIN/pg_ctl" -D /tmp/pgtest/data -m fast stop >/dev/null 2>&1 || true
     echo "parado"
     ;;
-  *) sed -n '2,13p' "$0"; exit 2 ;;
+  *) sed -n '2,15p' "$0"; exit 2 ;;
 esac
