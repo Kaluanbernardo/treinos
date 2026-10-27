@@ -84,7 +84,7 @@ psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/dev_syn
 
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
-       v_recomposition v_streaks v_weekly_summary v_monthly_summary)
+       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"
@@ -97,6 +97,12 @@ expect_eq "v_recomposition: cenário sintético = no_rumo" bot - \
   "select weight_arrow || ' ' || waist_arrow || ' ' || strength_arrow || ' ' || reading from v_recomposition" "down down up no_rumo"
 expect_eq "v_recomposition: outro usuário vê 'coletando_dados'" authenticated "$OTHER" "select reading from v_recomposition" "coletando_dados"
 expect_eq "aquecimento fora do 1RM/PR"      bot - "select (select count(*) from v_e1rm where set_number = 99) + (select count(*) from v_prs where set_number = 99)" 0
+expect_eq "prev_bests ignora a própria sessão" bot - \
+  "with s as (select session_id from v_prs order by date desc, logged_at desc limit 1) select count(*) from s, prev_bests(s.session_id) b join v_pr_bests p using (exercise_id) where b.best_kg > p.best_kg" 0
+expect_eq "prev_sets não devolve a sessão excluída" bot - \
+  "with s as (select session_id from set_logs order by logged_at desc limit 1) select count(*) from s, prev_sets(s.session_id) p where p.session_id = s.session_id" 0
+expect_eq "v_sessions: volume = soma das séries" bot - \
+  "select count(*) from v_sessions v where v.volume_kg <> (select coalesce(sum(coalesce(kg,0)*coalesce(reps,0)),0) from set_logs sl where sl.session_id = v.id and not sl.warmup)" 0
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
 expect_ok "Epley em v_e1rm confere"         bot - "select 1/(count(*) = 0)::int from v_e1rm where e1rm <> round(kg * (1 + reps / 30.0), 2) or reps > 12"
 expect_ok "há PRs com flag"                 bot - "select 1/(count(*) > 0)::int from v_prs where is_pr"
@@ -117,7 +123,7 @@ expect_ok   "bot: upsert body_metrics"        bot - "insert into body_metrics (d
 expect_ok   "bot: DELETE schedule_overrides"  bot - "delete from schedule_overrides where date = '2000-01-01'"
 expect_ok   "bot: DELETE food_logs"           bot - "delete from food_logs where date = '2000-01-01'"
 expect_deny "bot: DELETE exercises negado"    bot - "delete from exercises where slug = 'x'"
-expect_deny "bot: DELETE sessions negado"     bot - "delete from sessions where date = '2000-01-01'"
+expect_ok   "bot: DELETE sessions (F1: desfazer)" bot - "delete from sessions where date = '2000-01-01'"
 expect_deny "bot: CREATE TABLE negado"        bot - "create table public.hack (id int)"
 expect_deny "bot: DROP TABLE negado"          bot - "drop table public.bot_notes"
 expect_deny "bot: ALTER TABLE negado"         bot - "alter table public.sessions add column x int"
