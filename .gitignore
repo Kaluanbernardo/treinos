@@ -12,3 +12,7 @@ dev-dist/
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# impeccable engine binary (baixado sob demanda pelo launcher)
+.claude/skills/impeccable/scripts/bin/
+.claude/settings.local.json
