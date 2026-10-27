@@ -8,7 +8,8 @@ import {
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { PrevBest, PrevSet, SetLog, TemplateExercise } from '../lib/types'
-import { dm, epley, intFmt, kgFmt, mmss, num, capitalize, restLabel, wdShort } from '../lib/format'
+import { prFlagsFor } from '../lib/pr'
+import { dm, intFmt, kgFmt, mmss, num, capitalize, restLabel, wdShort } from '../lib/format'
 import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton, haptic, toast } from '../components/ui'
 import { repsLabel } from '../components/Ficha'
 import { Ring } from '../components/Ring'
@@ -335,24 +336,6 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
 }
 
 const unitSuffix = (te: TemplateExercise) => (te.reps_unit === 'max' || te.reps_unit === 's' ? ' s' : te.reps_unit === 'm' ? ' m' : '')
-
-/** PR = supera o melhor anterior (sessões anteriores + séries anteriores desta), mesma regra de v_prs. */
-function prFlagsFor(exSets: SetLog[], best: PrevBest | undefined) {
-  const flags = new Map<string, boolean>()
-  let bestKg = best?.best_kg ?? null
-  let bestE = best?.best_e1rm ?? null
-  for (const s of [...exSets].sort((a, b) => a.logged_at.localeCompare(b.logged_at))) {
-    const kg = s.kg ?? 0
-    const reps = s.reps ?? 0
-    if (kg <= 0 || reps < 1) continue
-    const e = epley(kg, reps)
-    const pr = (bestKg != null && kg > bestKg) || (bestE != null && e != null && e > bestE)
-    flags.set(s.id, pr)
-    bestKg = Math.max(bestKg ?? 0, kg)
-    if (e != null) bestE = Math.max(bestE ?? 0, e)
-  }
-  return flags
-}
 
 function PrevLine({ prev, best }: { prev: PrevSet[]; best?: PrevBest }) {
   if (!prev.length && !best) {

@@ -113,6 +113,32 @@ expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
 expect_ok "Epley em v_e1rm confere"         bot - "select 1/(count(*) = 0)::int from v_e1rm where e1rm <> round(kg * (1 + reps / 30.0), 2) or reps > 12"
 expect_ok "há PRs com flag"                 bot - "select 1/(count(*) > 0)::int from v_prs where is_pr"
+# PR só quando supera ESTRITAMENTE: exercício isolado com sequência conhecida (tudo em rollback)
+PR_SEQ="with e as (insert into exercises (slug, name, muscle_group) values ('teste_pr', 'Teste PR', 'peito') returning id),
+  s as (insert into sessions (date, modality, status) values ('2026-10-01', 'musculacao', 'feito'), ('2026-10-03', 'musculacao', 'feito') returning id, date),
+  l as (insert into set_logs (session_id, exercise_id, set_number, kg, reps, logged_at)
+        select s.id, e.id, v.n, v.kg, v.reps, s.date + v.n * interval '1 minute'
+        from e, s join (values ('2026-10-01'::date, 1, 62.5, 7), ('2026-10-01', 2, 75, 2),
+                               ('2026-10-03', 1, 62.5, 7), ('2026-10-03', 2, 60, 10), ('2026-10-03', 3, 75, 2),
+                               ('2026-10-03', 4, 62.5, 10)) v(d, n, kg, reps) on v.d = s.date
+        returning 1)
+  select count(*) from l"
+expect_eq "PR: empate (mesma carga × reps, ou 1RM igual com carga menor) não é PR; só o estritamente melhor" postgres - \
+  "$PR_SEQ; select string_agg(to_char(date, 'DD') || ':' || kg::float || 'x' || reps || '=' || is_pr, ' ' order by date, set_number) from v_prs where exercise_name = 'Teste PR'" \
+  "6
+01:62.5x7=false 01:75x2=true 03:62.5x7=false 03:60x10=false 03:75x2=false 03:62.5x10=true"
+expect_eq "PR: prev_bests da 2ª sessão = 75 kg / 80,00" postgres - \
+  "$PR_SEQ; select b.best_kg::float || ' ' || b.best_e1rm from prev_bests((select session_id from set_logs where exercise_id = (select id from exercises where slug = 'teste_pr') order by logged_at desc limit 1)) b join exercises x on x.id = b.exercise_id where x.slug = 'teste_pr'" \
+  "6
+75 80.00"
+# a regra de PR do app (web/src/lib/pr.ts) bate com o banco: casos de empate + a mesma conta de Epley numa grade
+if [[ -x "$ROOT/web/node_modules/.bin/jiti" ]]; then
+  q postgres - "select json_agg(json_build_array(kg, reps, round(kg * (1 + reps / 30.0), 2))) from generate_series(25, 25000, 25) g(c), generate_series(1, 12) reps, lateral (select (c / 100.0)::numeric(6,2) as kg) k" \
+    >"$BASE/e1rm_grid.json"
+  if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-pr.ts "$BASE/e1rm_grid.json" 2>&1)"; then
+    ok "PR no app: $(grep -c '  ok' <<<"$out") casos (empates sem selo, Epley igual ao do banco)"
+  else fail "PR no app (web/scripts/test-pr.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -5)"; fi
+else fail "PR no app" "web/node_modules ausente (rode npm install em web/)"; fi
 expect_ok "média 7d por janela de data"     bot - \
   "select 1/(count(*) = 0)::int from v_weight_trend t where t.avg_7d <> round((select avg(b.peso_kg) from body_metrics b where b.peso_kg is not null and b.date between t.date - 6 and t.date), 2)"
 expect_eq "v_streaks tem as 5 modalidades + total" bot - "select count(*) from v_streaks" 6
