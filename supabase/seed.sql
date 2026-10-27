@@ -121,7 +121,6 @@ with rows (wd, st, dur, m, tpl, title, note) as (values
   (1, '06:00'::time, 60, 'musculacao'::public.modality, 'superior_a',   'Superior A', null),
   (1, '19:00'::time, 60, 'muay_thai'::public.modality,  null,           'Muay thai',  null),
   (2, '06:00'::time, 60, 'musculacao'::public.modality, 'inferiores_a', 'Inferiores A', null),
-  (2, '19:00'::time, 90, 'jiu_jitsu'::public.modality,  null,           'Jiu-jitsu',  'Rolas moderados (pernas de manhã).'),
   (3, '20:00'::time, 60, 'cross'::public.modality,      null,           'Cross training', null),
   (4, '06:00'::time, 60, 'musculacao'::public.modality, 'superior_b',   'Superior B', null),
   (4, '20:00'::time, 60, 'muay_thai'::public.modality,  null,           'Muay thai',  'Técnico se estiver cansado.'),
@@ -135,6 +134,9 @@ on conflict (weekday, start_time) do update set
   duration_min = excluded.duration_min, modality = excluded.modality,
   template_id = excluded.template_id, title = excluded.title, note = excluded.note;
 -- Domingo: folga (sem slots).
+-- Jiu-jitsu (ter 19:00) saiu da grade em 27/10/2026: desativa o slot se existir.
+update public.schedule_slots set active = false
+where weekday = 2 and start_time = '19:00' and modality = 'jiu_jitsu' and active;
 
 -- ---------------------------------------------------------------- exceções desta semana
 -- Ter 27/10 06:00: Inferiores A substituído por Crossfit (feito de manhã).
@@ -143,14 +145,6 @@ select '2026-10-27', 'replace', s.id, 'cross', 'Crossfit',
        'Fez Crossfit de manhã no lugar de Inferiores A (remarcado para qua 28/10 às 6h).', 'bot'
 from public.schedule_slots s
 where s.weekday = 2 and s.start_time = '06:00'
-  and not exists (select 1 from public.schedule_overrides o where o.date = '2026-10-27' and o.slot_id = s.id);
-
--- Ter 27/10 19:00: jiu-jitsu continua, em caráter experimental.
-insert into public.schedule_overrides (date, action, slot_id, modality, title, motivo, source)
-select '2026-10-27', 'replace', s.id, 'jiu_jitsu', 'Jiu-jitsu (experimental)',
-       'Experimental: ainda decidindo se o jiu fica na grade.', 'bot'
-from public.schedule_slots s
-where s.weekday = 2 and s.start_time = '19:00'
   and not exists (select 1 from public.schedule_overrides o where o.date = '2026-10-27' and o.slot_id = s.id);
 
 -- Qua 28/10 06:00: Inferiores A remarcado.
@@ -162,12 +156,12 @@ where t.slug = 'inferiores_a'
   and not exists (select 1 from public.schedule_overrides o
                   where o.date = '2026-10-28' and o.action = 'add' and o.template_id = t.id);
 
--- Qua 28/10 20:00: cross pulado nesta semana.
+-- Qui 29/10 20:00: muay pulado (compromisso pessoal).
 insert into public.schedule_overrides (date, action, slot_id, motivo, source)
-select '2026-10-28', 'skip', s.id,
-       'Pulado nesta semana: Inferiores A remarcado para a manhã.', 'bot'
+select '2026-10-29', 'skip', s.id,
+       'Compromisso pessoal na quinta à noite (ausência planejada).', 'bot'
 from public.schedule_slots s
-where s.weekday = 3 and s.start_time = '20:00'
-  and not exists (select 1 from public.schedule_overrides o where o.date = '2026-10-28' and o.slot_id = s.id);
+where s.weekday = 4 and s.start_time = '20:00'
+  and not exists (select 1 from public.schedule_overrides o where o.date = '2026-10-29' and o.slot_id = s.id);
 
 commit;
