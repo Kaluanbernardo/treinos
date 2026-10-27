@@ -65,7 +65,7 @@ insert into public.workout_templates (slug, name, modality, warmup, note, est_mi
    '8 min: remo, pendurar 2×20 s, pull-apart.', null, 60),
   ('inferiores_a', 'Inferiores A', 'musculacao',
    '8 min: bike, mobilidade de quadril/tornozelo, 10 agachamentos livres, aproximação.',
-   'Sem falha: há jiu-jitsu à noite.', 60),
+   null, 60),
   ('inferiores_b', 'Inferiores B', 'musculacao',
    '8 min: bike, ponte de glúteo 2×12, good morning sem peso, aproximação.', null, 60)
 on conflict (slug) do update set
