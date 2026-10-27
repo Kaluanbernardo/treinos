@@ -42,7 +42,7 @@ function ResumoBlock() {
         options={[{ value: 'semana', label: 'Semana' }, { value: 'mes', label: 'Mês' }]} /></div>
     }>
       {q.isError ? <ErrorState what="o resumo" onRetry={() => q.refetch()} /> : q.isPending ? <Skeleton className="h-56" /> : !row ? (
-        <Collecting title="Sem dados ainda">O resumo começa com o primeiro registro.</Collecting>
+        <Collecting title="Sem dados ainda" />
       ) : (
         <>
           <div className="-mt-1 mb-4 flex items-center justify-between gap-2">
@@ -81,9 +81,9 @@ function VolumeGrupoBlock({ period }: { period: Period }) {
   const max = Math.max(1, ...rows.map((r) => Math.max(r.sets, r.avgSets ?? 0)))
 
   return (
-    <Block id="b-grupos" title="Volume por grupo muscular" sub="Séries válidas nesta semana; o traço é a média das semanas anteriores do período">
+    <Block id="b-grupos" title="Séries por grupo" sub="Esta semana · traço = média do período">
       {rows.length === 0 ? (
-        <Collecting title="Sem séries registradas">Cada série confirmada no treino soma no grupo muscular do exercício.</Collecting>
+        <Collecting title="Sem séries registradas" />
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((r) => (
@@ -116,7 +116,7 @@ function AderenciaBlock({ period }: { period: Period }) {
   const completed = weeks.filter((w) => w.period_end < todaySP())
 
   return (
-    <Block id="b-aderencia" title="Aderência" sub="Semanas cumprindo o planejado; remarcar não quebra a sequência">
+    <Block id="b-aderencia" title="Aderência" sub="Semanas cumprindo o plano">
       <div className="flex items-center gap-4 rounded-2xl bg-card-2 p-4">
         <Flame size={34} className={total?.current_streak_weeks ? 'text-kcal' : 'text-muted'} aria-hidden="true" />
         <div className="min-w-0 flex-1">
@@ -128,13 +128,13 @@ function AderenciaBlock({ period }: { period: Period }) {
         </div>
       </div>
       {completed.length === 0 && (
-        <p className="mt-3 text-sm leading-relaxed text-muted">A primeira semana fecha no domingo; a sequência começa a contar a partir dela.</p>
+        <p className="mt-3 text-sm text-muted">A sequência conta a partir do 1º domingo.</p>
       )}
 
       <ul className="mt-4 flex flex-col divide-y divide-line">
         {MODALITIES.map((m) => <ModalityRow key={m} m={m} weeks={weeks} s={streaks.data!.find((x) => x.modality === m)} />)}
       </ul>
-      <Legend items={[{ swatch: 'bar', label: 'feito (cor da modalidade)', color: 'var(--color-muted)' }, { swatch: 'band', label: 'planejado' }]} />
+      <Legend items={[{ swatch: 'bar', label: 'feito', color: 'var(--color-muted)' }, { swatch: 'band', label: 'planejado' }]} />
     </Block>
   )
 }
@@ -183,12 +183,9 @@ function NutricaoTrendBlock({ period }: { period: Period }) {
   const last = weeks[weeks.length - 1]
 
   return (
-    <Block id="b-nutri" title="Nutrição por semana" sub="Médias só nos dias registrados, contra a meta (faixa verde)">
+    <Block id="b-nutri" title="Nutrição por semana" sub="Média dos dias registrados">
       {logged.length === 0 ? (
-        <Collecting title="Nenhum dia com refeições registradas" icon={<Utensils size={20} />}>
-          Conforme as refeições chegarem pelo chat, cada semana mostra a média de kcal e proteína e quantos dias foram registrados.
-          Semana com poucos dias (ex.: 3/7) não deve ser levada a sério.
-        </Collecting>
+        <Collecting title="Nenhum dia com refeições registradas" icon={<Utensils size={20} />} />
       ) : (
         <>
           <h3 className="text-sm font-medium text-muted">Proteína (g/dia)</h3>
@@ -206,7 +203,7 @@ function NutricaoTrendBlock({ period }: { period: Period }) {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[13px] text-muted">Barras mais claras: semanas com menos de 5 dias registrados.</p>
+          <Legend items={[{ swatch: 'band', label: 'meta de proteína' }, { swatch: 'bar', label: 'semana < 5 dias (mais clara)', color: 'var(--color-muted)' }]} />
         </>
       )}
     </Block>
@@ -233,9 +230,7 @@ function FotosBlock() {
     return (
       <Block id="b-fotos" title="Fotos de progresso" sub="Mensais: frente, lado e costas">
         <Collecting title="Nenhuma foto ainda" icon={<Camera size={20} />}>
-          No dia 1 de cada mês, mande no chat as 3 fotos (frente, lado, costas): mesmo lugar, luz e distância, de manhã em
-          jejum, mesma roupa, postura relaxada. O assistente tira os metadados (GPS, aparelho) e guarda num cofre privado;
-          aqui elas aparecem em grade por mês e dá para comparar dois meses lado a lado.
+          Dia 1 de cada mês: frente, lado e costas pelo chat. Mesma luz e distância.
         </Collecting>
       </Block>
     )
@@ -277,7 +272,7 @@ function FotosBlock() {
           <Compare before={pick(before, pose)} after={pick(after, pose)} labels={[monthShort(`${before}-01`), monthShort(`${after}-01`)]} />
         </div>
       ) : (
-        <p className="mt-4 text-sm text-muted">A comparação lado a lado aparece a partir do 2º mês de fotos.</p>
+        <p className="mt-4 text-sm text-muted">Comparação a partir do 2º mês.</p>
       )}
     </Block>
   )

@@ -3,7 +3,9 @@ import { Ban, CalendarClock, Check, ChevronLeft, ChevronRight, Clock, MessageCir
 import { usePlan, useTemplates } from '../lib/api'
 import type { PlanItem } from '../lib/types'
 import { addDays, capitalize, dm, hhmm, todaySP, wdShort, weekStart } from '../lib/format'
-import { Badge, Button, Card, ErrorState, IconButton, ScreenHeader, Sheet, Skeleton } from '../components/ui'
+import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton } from '../components/ui'
+import { Big, DateTile, WeekStrip } from '../components/viz'
+import { markOf, weekDays } from '../lib/week'
 import { MODALITY, ModalityDot } from '../components/modality'
 import { FichaDetail } from '../components/Ficha'
 
@@ -21,72 +23,85 @@ export function Agenda() {
   const isCurrent = ws === weekStart(today)
   const tpl = open?.template_id ? templates.data?.find((t) => t.id === open.template_id) : undefined
 
+  const marks = active.map((i) => markOf(i))
+  const days7 = weekDays(ws, items, today)
+  const pick = (d: string) => document.getElementById(`dia-${d}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
   return (
     <div className="flex flex-col gap-4">
-      <ScreenHeader title="Agenda" sub="Grade da Pugna com as exceções da semana" />
+      <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Agenda</h1>
 
       <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Semana">
         <IconButton label="Semana anterior" onClick={() => setWs(addDays(ws, -7))}><ChevronLeft size={24} /></IconButton>
         <div className="text-center">
           <p className="font-semibold">{isCurrent ? 'Esta semana' : ws === addDays(weekStart(today), 7) ? 'Próxima semana' : ws === addDays(weekStart(today), -7) ? 'Semana passada' : `Semana de ${dm(ws)}`}</p>
-          <p className="text-sm text-muted">{dm(ws)} a {dm(addDays(ws, 6))}</p>
+          <p className="text-sm tabular-nums text-muted">{dm(ws)} a {dm(addDays(ws, 6))}</p>
         </div>
         <IconButton label="Próxima semana" onClick={() => setWs(addDays(ws, 7))}><ChevronRight size={24} /></IconButton>
       </div>
 
       {plan.isError ? <ErrorState what="a agenda" onRetry={() => plan.refetch()} /> : plan.isPending ? <Skeleton className="h-[60vh]" /> : (
         <>
-          <p className="px-1 text-[15px] text-muted">
-            <b className="text-fg tabular-nums">{active.length}</b> atividades
-            {ws <= today && <> · <b className="text-fg tabular-nums">{done}</b> feitas</>}
-            {exceptions > 0 && <> · <b className="text-warn tabular-nums">{exceptions}</b> {exceptions === 1 ? 'exceção' : 'exceções'}</>}
-            {!isCurrent && <button type="button" className="ml-2 font-semibold text-lime" onClick={() => setWs(weekStart(today))}>voltar para hoje</button>}
-          </p>
-          <ol className="flex flex-col gap-3">
+          <Card aria-label="Resumo da semana">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[13px] text-muted">{ws <= today ? 'Feitas' : 'Planejadas'}</p>
+                <Big size="lg" value={ws <= today ? done : active.length} unit={ws <= today ? `/${active.length}` : 'atividades'} />
+              </div>
+              <div className="flex flex-col items-end gap-1.5">
+                {exceptions > 0 && <Badge tone="warn"><CalendarClock size={13} aria-hidden="true" /> {exceptions} {exceptions === 1 ? 'exceção' : 'exceções'}</Badge>}
+                {!isCurrent && <button type="button" className="h-10 px-1 text-[15px] font-semibold text-lime" onClick={() => setWs(weekStart(today))}>voltar para hoje</button>}
+              </div>
+            </div>
+            {marks.length > 0 && (
+              <div className="mt-3 flex h-2 gap-1" aria-hidden="true">
+                {marks.map((m, k) => <span key={k} className={`flex-1 rounded-full ${m === 'done' ? 'bg-ok' : m === 'missed' ? 'bg-muted/40' : 'bg-line'}`} />)}
+              </div>
+            )}
+            <div className="-mx-2 mt-3"><WeekStrip days={days7} onPick={pick} /></div>
+          </Card>
+
+          <ol className="flex flex-col gap-2">
             {days.map((d) => {
               const list = items.filter((i) => i.date === d)
               const isToday = d === today
+              if (list.length === 0) {
+                return (
+                  <li key={d} id={`dia-${d}`} className="flex scroll-mt-4 items-center gap-3 px-4 py-2 text-muted">
+                    <span className="w-14 text-center text-sm font-medium tabular-nums">{capitalize(wdShort(d))} {Number(d.slice(8))}</span>
+                    <Moon size={16} aria-hidden="true" /> <span className="text-[15px]">Folga</span>
+                  </li>
+                )
+              }
               return (
-                <li key={d}>
-                  <Card className={`py-4 ${isToday ? 'ring-1 ring-lime/40' : ''} ${d < today ? 'opacity-90' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <h2 className="flex items-baseline gap-2">
-                        <span className={`text-lg font-semibold ${isToday ? 'text-lime' : ''}`}>{capitalize(wdShort(d))}</span>
-                        <span className="text-[15px] tabular-nums text-muted">{dm(d)}</span>
-                      </h2>
-                      {isToday && <Badge tone="lime">hoje</Badge>}
-                    </div>
-                    {list.length === 0 ? (
-                      <p className="mt-2 flex items-center gap-2 text-[15px] text-muted"><Moon size={16} aria-hidden="true" /> Folga</p>
-                    ) : (
-                      <ul className="mt-2 flex flex-col">
-                        {list.map((i) => (
-                          <li key={`${i.start_time}-${i.title}-${i.plan_kind}`}>
-                            <button type="button" data-plan onClick={() => setOpen(i)}
-                              className="-mx-2 flex w-[calc(100%+16px)] items-start gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-card-2">
-                              <span className={`w-12 shrink-0 pt-0.5 font-medium tabular-nums ${i.active ? 'text-fg' : 'text-muted line-through'}`}>{hhmm(i.start_time)}</span>
-                              <ModalityDot modality={i.modality} className="mt-2" />
-                              <span className="min-w-0 flex-1">
-                                <span className={`block font-medium ${i.active ? '' : 'text-muted line-through'}`}>{i.title}</span>
-                                <span className="block text-sm text-muted">
-                                  {i.template_id ? `${i.exercise_count} exercícios · ` : i.modality_label !== i.title ? `${i.modality_label} · ` : ''}{i.duration_min} min
-                                </span>
-                                {i.motivo && i.plan_kind !== 'base' && <span className="mt-1 block text-sm leading-snug text-warn/90">{i.motivo}</span>}
+                <li key={d} id={`dia-${d}`} className="scroll-mt-4">
+                  <Card className={`flex gap-3 px-4 py-3 ${isToday ? 'ring-1 ring-lime/40' : ''}`} as="div">
+                    <div className="pt-1"><DateTile iso={d} active={isToday} /></div>
+                    <ul className="min-w-0 flex-1">
+                      {list.map((i) => (
+                        <li key={`${i.start_time}-${i.title}-${i.plan_kind}`}>
+                          <button type="button" data-plan onClick={() => setOpen(i)}
+                            className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-card-2">
+                            <span className="min-w-0 flex-1">
+                              <span className={`flex items-center gap-2 font-semibold ${i.active ? '' : 'text-muted line-through'}`}>
+                                <ModalityDot modality={i.modality} /><span className="truncate">{i.title}</span>
                               </span>
-                              <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5"><Status i={i} today={today} /></span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                              <span className="mt-0.5 block text-sm tabular-nums text-muted">
+                                {hhmm(i.start_time)} · {i.template_id ? `${i.exercise_count} ex · ` : ''}{i.duration_min} min
+                              </span>
+                            </span>
+                            <span className="flex shrink-0 flex-col items-end gap-1"><Status i={i} today={today} /></span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </Card>
                 </li>
               )
             })}
           </ol>
-          <p className="flex items-start gap-2 px-1 text-sm leading-relaxed text-muted">
-            <MessageCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-            Para remarcar ou pular, é só falar no chat ("move o treino de amanhã pras 7h"). Remarcação não quebra a sequência.
+          <p className="flex items-center gap-2 px-1 text-sm text-muted">
+            <MessageCircle size={16} className="shrink-0" aria-hidden="true" /> Remarcar ou pular: pelo chat. Não quebra a sequência.
           </p>
         </>
       )}
@@ -106,7 +121,7 @@ export function Agenda() {
             )}
             <div className="mt-3">
               {tpl ? <FichaDetail template={tpl} /> : open.template_id ? <Skeleton className="h-40" /> : (
-                <p className="text-[15px] leading-relaxed text-muted">Aula na Pugna. O registro é pelo botão Feito/Faltei no Hoje ou pelo chat.</p>
+                <p className="text-[15px] text-muted">Aula na Pugna. Registre com Feito/Faltei no Hoje ou pelo chat.</p>
               )}
             </div>
             <Button className="mt-4 w-full" size="lg" onClick={() => setOpen(null)}>Fechar</Button>

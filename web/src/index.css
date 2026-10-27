@@ -11,7 +11,7 @@
   --color-kcal: #FF8A3D;
   --color-protein: #38BDF8;
   --color-carb: #C6F432;
-  --color-fat: #A78BFA;
+  --color-fat: #A78BFA; /* taste-skill-ignore: hue de gordura fixado no plano §10 (só nos dados de gordura) */
   --color-ok: #34D399;
   --color-warn: #FBBF24;
   --color-err: #F87171;
@@ -43,15 +43,11 @@
   &::-webkit-scrollbar { display: none; }
 }
 
-/* esqueleto de carregamento */
-.skeleton {
-  background: linear-gradient(100deg, var(--color-card) 30%, var(--color-card-2) 50%, var(--color-card) 70%);
-  background-size: 300% 100%;
-  animation: shimmer 1.4s var(--ease-out-expo) infinite;
-}
-@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* esqueleto de carregamento: bloco chapado no tamanho final, pulsando de leve (sem brilho em gradiente) */
+.skeleton { background: var(--color-card); animation: skeleton-pulse 1.4s ease-in-out infinite; }
+@keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
-/* ✓ confirma com um "pop" */
+/* o check confirma com um "pop" */
 .check-pop { animation: pop 320ms var(--ease-out-expo); }
 @keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 
@@ -68,6 +64,7 @@
 
 /* anéis e barras crescem ao abrir */
 .ring-arc { transition: stroke-dashoffset 600ms var(--ease-out-expo); }
+.meter-fill { transition: width 600ms var(--ease-out-expo); }
 
 dialog.sheet[open] > div { animation: sheet-up 260ms var(--ease-out-expo); }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, ArrowLeft, CalendarClock, Dumbbell, FileText, Lightbulb, MessageSquareText, type LucideIcon } from 'lucide-react'
 import { useNotes } from '../lib/api'
 import { go } from '../lib/router'
@@ -20,10 +20,14 @@ const timeOf = (ts: string) => new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, 
 
 export function Notas(_: { email: string }) {
   const notes = useNotes()
+  const [kind, setKind] = useState<BotNote['kind'] | null>(null)
   useEffect(() => { localStorage.setItem('notes_seen_at', String(Date.now())) }, [notes.data])
 
+  const all = notes.data ?? []
+  const counts = new Map<BotNote['kind'], number>()
+  for (const n of all) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1)
   const groups = new Map<string, BotNote[]>()
-  for (const n of notes.data ?? []) {
+  for (const n of all.filter((x) => !kind || x.kind === kind)) {
     const d = dayOf(n.created_at)
     groups.set(d, [...(groups.get(d) ?? []), n])
   }
@@ -34,44 +38,59 @@ export function Notas(_: { email: string }) {
     <div className="flex flex-col gap-4">
       <header className="flex items-center gap-1 pt-1">
         <IconButton label="Voltar" onClick={() => (history.length > 1 ? history.back() : go('hoje'))}><ArrowLeft size={24} /></IconButton>
-        <div>
-          <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Notas do assistente</h1>
-        </div>
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Notas</h1>
+        {all.length > 0 && <span className="ml-auto pr-1 text-sm tabular-nums text-muted">{all.length}</span>}
       </header>
-      <p className="-mt-2 px-1 text-[15px] text-muted">Decisões, ajustes de carga, remarcações e alertas registrados pelo chat.</p>
+
+      {counts.size > 1 && (
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4" role="radiogroup" aria-label="Tipo de nota">
+          <Chip on={!kind} onClick={() => setKind(null)}>Todas</Chip>
+          {(Object.keys(KIND) as BotNote['kind'][]).filter((k) => counts.has(k)).map((k) => {
+            const K = KIND[k]
+            return <Chip key={k} on={kind === k} onClick={() => setKind(kind === k ? null : k)}><K.Icon size={15} aria-hidden="true" />{K.label}<span className="opacity-60">{counts.get(k)}</span></Chip>
+          })}
+        </div>
+      )}
 
       {notes.isError ? <ErrorState what="as notas" onRetry={() => notes.refetch()} /> : notes.isPending ? <Skeleton className="h-64" /> : groups.size === 0 ? (
-        <Card>
-          <MessageSquareText size={28} className="text-muted" aria-hidden="true" />
-          <p className="mt-3 text-lg font-semibold">Nenhuma nota ainda</p>
-          <p className="mt-1 text-[15px] leading-relaxed text-muted">
-            Quando o assistente ajustar uma carga, remarcar um treino, tomar uma decisão sobre o plano ou mandar o resumo
-            da semana, o registro aparece aqui, do mais novo para o mais antigo.
-          </p>
+        <Card className="flex items-center gap-3">
+          <MessageSquareText size={24} className="shrink-0 text-muted" aria-hidden="true" />
+          <p className="text-muted"><span className="font-medium text-fg">Nenhuma nota ainda.</span> Ajustes de carga, remarcações e resumos do assistente aparecem aqui.</p>
         </Card>
       ) : (
         [...groups.entries()].map(([d, list]) => (
           <section key={d} aria-label={label(d)}>
-            <h2 className="px-1 text-sm font-semibold text-muted">{label(d)}{d !== today && d !== addDays(today, -1) ? '' : ` · ${dm(d)}`}</h2>
-            <ul className="mt-2 flex flex-col gap-2">
-              {list.map((n) => {
+            <h2 className="px-1 text-sm font-semibold text-muted">{label(d)}{d === today || d === addDays(today, -1) ? ` · ${dm(d)}` : ''}</h2>
+            <ol className="mt-2">
+              {list.map((n, idx) => {
                 const k = KIND[n.kind] ?? KIND.nota
                 return (
-                  <li key={n.id} className="rounded-[var(--radius-card)] bg-card p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${k.cls}`}>
-                        <k.Icon size={14} aria-hidden="true" /> {k.label}
-                      </span>
-                      <span className="text-sm tabular-nums text-muted">{timeOf(n.created_at)}</span>
+                  <li key={n.id} className="relative flex gap-3 pb-3">
+                    {idx < list.length - 1 && <span className="absolute top-11 bottom-0 left-[19px] w-0.5 rounded-full bg-line" aria-hidden="true" />}
+                    <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${k.cls}`} aria-hidden="true"><k.Icon size={18} /></span>
+                    <div className="min-w-0 flex-1 rounded-[var(--radius-card)] bg-card px-4 py-3">
+                      <p className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className={`font-semibold ${k.cls.split(' ').find((c) => c.startsWith('text-'))}`}>{k.label}</span>
+                        <span className="tabular-nums text-muted">{timeOf(n.created_at)}</span>
+                      </p>
+                      <p className="mt-1 whitespace-pre-line text-[16px] leading-relaxed">{n.text}</p>
                     </div>
-                    <p className="mt-2 whitespace-pre-line text-[16px] leading-relaxed">{n.text}</p>
                   </li>
                 )
               })}
-            </ul>
+            </ol>
           </section>
         ))
       )}
     </div>
+  )
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" role="radio" aria-checked={on} onClick={onClick}
+      className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors duration-150 ${on ? 'bg-fg text-bg' : 'bg-card-2 text-muted hover:text-fg'}`}>
+      {children}
+    </button>
   )
 }

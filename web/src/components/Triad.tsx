@@ -14,6 +14,7 @@ interface Signal {
   label: string
   arrow: Arrow
   value: string
+  unit: string
   goodWhen: 'down' | 'up'
   pending: string
 }
@@ -30,17 +31,17 @@ export function signals(r: Recomposition | null | undefined, ready: TriadReadine
   return [
     {
       key: 'peso', label: 'Peso', arrow: r?.weight_arrow ?? null, goodWhen: 'down',
-      value: `${signed(r?.weight_delta_kg)} kg`,
+      value: signed(r?.weight_delta_kg), unit: 'kg',
       pending: pendingText(ready.firstWeight, 28, 'sem pesagem'),
     },
     {
       key: 'cintura', label: 'Cintura', arrow: r?.waist_arrow ?? null, goodWhen: 'down',
-      value: `${signed(r?.waist_delta_cm)} cm`,
+      value: signed(r?.waist_delta_cm), unit: 'cm',
       pending: pendingText(ready.firstWaist, 21, 'sem medida'),
     },
     {
       key: 'forca', label: 'Força', arrow: r?.strength_arrow ?? null, goodWhen: 'up',
-      value: `${signed(r?.strength_delta_pct)}%`,
+      value: `${signed(r?.strength_delta_pct)}%`, unit: '1RM',
       pending: pendingText(ready.firstStrength, 28, 'sem treino'),
     },
   ]
@@ -56,21 +57,21 @@ export function Triad({ data, ready, size = 'md' }: { data: Recomposition | null
     <ul className="grid grid-cols-3 divide-x divide-line rounded-2xl bg-bg/60 ring-1 ring-line" aria-label="Recomposição: peso, cintura e força">
       {list.map((s) => {
         const tone = toneFor(s.arrow, s.goodWhen)
-        const Icon = s.arrow === 'down' ? ArrowDownRight : s.arrow === 'up' ? ArrowUpRight : s.arrow === 'flat' ? ArrowRight : Hourglass
+        const Icon = s.arrow === 'down' ? ArrowDownRight : s.arrow === 'up' ? ArrowUpRight : ArrowRight
         return (
-          <li key={s.key} className={`flex flex-col gap-1 px-3 ${size === 'lg' ? 'py-4' : 'py-3'}`}>
+          <li key={s.key} className={`flex min-w-0 flex-col gap-1 px-3 ${size === 'lg' ? 'py-4' : 'py-3'}`}>
             <span className="text-[13px] text-muted">{s.label}</span>
             {s.arrow ? (
               <>
-                <span className={`flex items-center gap-1 font-semibold ${tone}`}>
-                  <Icon size={size === 'lg' ? 26 : 22} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                  <span className={size === 'lg' ? 'text-lg' : 'text-base'}>{WORD[s.arrow]}</span>
+                <span className={`flex items-center gap-0.5 font-bold tabular-nums leading-none ${tone} ${size === 'lg' ? 'text-xl' : 'text-lg'}`}>
+                  <Icon size={size === 'lg' ? 22 : 20} strokeWidth={2.75} className="shrink-0" aria-hidden="true" />
+                  <span className="truncate">{s.value}</span>
                 </span>
-                <span className="text-[13px] tabular-nums text-muted">{s.value}</span>
+                <span className="text-[13px] text-muted">{s.unit} · <span className={`font-medium ${tone}`}>{WORD[s.arrow]}</span></span>
               </>
             ) : (
-              <span className="flex items-start gap-1.5 text-[15px] font-medium leading-snug text-fg/80">
-                <Hourglass size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+              <span className="flex items-start gap-1.5 text-sm font-medium leading-snug text-fg/80">
+                <Hourglass size={15} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
                 <span><span className="sr-only">coletando: </span>{s.pending}</span>
               </span>
             )}

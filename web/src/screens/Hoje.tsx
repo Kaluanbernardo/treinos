@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Ban, Check, ChevronRight, Dumbbell, NotebookText, Play, SlidersHorizontal, Trophy, X } from 'lucide-react'
 import {
-  useActiveSession, useBodyMetrics, useDeleteSession, useExerciseSessions, useMarkSession, useNotes, usePrs,
-  useRecomposition, useStartSession, useStreaks, useToday, useWeek, useWeightTrend,
+  Ban, Check, ChevronRight, Clock, Dumbbell, Flame, Hourglass, Moon, NotebookText, Play, SlidersHorizontal, Timer, Trophy, X,
+} from 'lucide-react'
+import {
+  useActiveSession, useBodyMetrics, useDailyNutrition, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
+  useNutritionTargets, usePrs, useRecomposition, useStartSession, useStreaks, useToday, useToggleCreatine, useWeek, useWeightTrend,
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { PlanItem } from '../lib/types'
-import { capitalize, dm, hhmm, kgFmt, longDay, num, signed, todaySP, wdShort, addDays } from '../lib/format'
-import { Badge, Button, Card, CardHead, Collecting, ErrorState, IconButton, ScreenHeader, Skeleton, haptic, toast } from '../components/ui'
+import { capitalize, dMon, hhmm, intFmt, kgFmt, num, todaySP, wdShort, addDays, weekStart } from '../lib/format'
+import { weekDays } from '../lib/week'
+import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
-import { NutritionStrip } from '../components/NutritionStrip'
 import { SummaryCard } from '../components/SummaryCard'
+import { CreatineButton } from './Nutricao'
+import { Big, DateTile, Delta, Rings, Spark, WeekStrip } from '../components/viz'
 
-const NAME = 'Kaluan'
 const LOGGED = new Set(['feito', 'parcial', 'faltou'])
 
 export function Hoje() {
@@ -33,34 +36,35 @@ export function Hoje() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ScreenHeader
-        title={`Olá, ${NAME}`}
-        sub={capitalize(longDay(todayIso))}
-        actions={
-          <>
-            <IconButton label={unread ? `Notas do assistente (${unread} novas)` : 'Notas do assistente'} onClick={() => go('notas')}>
-              <NotebookText size={24} />
-              {unread > 0 && <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full bg-lime ring-2 ring-bg" aria-hidden="true" />}
-            </IconButton>
-            <IconButton label="Configurações" onClick={() => go('config')}><SlidersHorizontal size={24} /></IconButton>
-          </>
-        }
-      />
+      <header className="flex items-center justify-between gap-3 pt-1">
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
+          {capitalize(wdShort(todayIso))}, <span className="text-muted">{dMon(todayIso)}</span>
+        </h1>
+        <div className="-mr-2 flex shrink-0 items-center">
+          <IconButton label={unread ? `Notas do assistente (${unread} novas)` : 'Notas do assistente'} onClick={() => go('notas')}>
+            <NotebookText size={24} />
+            {unread > 0 && <span className="absolute top-2 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime px-1 text-[11px] font-bold text-bg" aria-hidden="true">{unread}</span>}
+          </IconButton>
+          <IconButton label="Configurações" onClick={() => go('config')}><SlidersHorizontal size={24} /></IconButton>
+        </div>
+      </header>
 
       {today.isError ? (
         <ErrorState what="o seu dia" message={(today.error as Error).message} onRetry={() => today.refetch()} />
       ) : today.isPending || active.isPending ? (
-        <Skeleton className="h-60" />
+        <Skeleton className="h-56" />
       ) : active.data ? (
         <ActiveSessionCard id={active.data.id} title={active.data.title} sets={active.data.n_sets} startedAt={active.data.started_at} />
+      ) : hero ? (
+        <AgoraCard item={hero} now={now} />
       ) : (
-        <AgoraCard item={hero} now={now} next={next} />
+        <DayDoneCard next={next} />
       )}
 
       <EvolucaoCard />
       <SummaryCard />
-      <NutritionStrip />
-      <SeuDia items={items} now={now} heroKey={hero ? key(hero) : null} next={next} loading={today.isPending} />
+      <DiaCard />
+      <SemanaCard items={items} now={now} heroKey={hero ? key(hero) : null} next={next} />
     </div>
   )
 }
@@ -90,40 +94,37 @@ const kindBadge = (kind: PlanItem['plan_kind']) =>
     : kind === 'adicionado' ? <Badge tone="lime">remarcado</Badge>
       : null
 
+/** Linha de metadados com ícones (hora · exercícios · duração). */
+function MetaRow({ parts }: { parts: { icon: React.ReactNode; text: string }[] }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[17px] text-muted">
+      {parts.map((p) => (
+        <li key={p.text} className="flex items-center gap-1.5 tabular-nums">{p.icon}<span className="text-fg">{p.text}</span></li>
+      ))}
+    </ul>
+  )
+}
+
 // ---------------------------------------------------------------- Agora
-function AgoraCard({ item, now, next }: { item?: PlanItem; now: number; next?: PlanItem }) {
+function AgoraCard({ item, now }: { item: PlanItem; now: number }) {
   const start = useStartSession()
   const mark = useMarkSession()
   const del = useDeleteSession()
 
-  if (!item) {
-    return (
-      <Card tone="raised">
-        <CardHead title="Dia encerrado" aside={<Badge tone="ok"><Check size={14} aria-hidden="true" /> livre</Badge>} />
-        <p className="mt-3 text-[28px] font-bold leading-tight">Recupere bem.</p>
-        {next ? (
-          <p className="mt-2 text-muted">
-            Próximo: <span className="text-fg">{capitalize(wdShort(next.date))} · {hhmm(next.start_time)} · {next.title}</span>
-          </p>
-        ) : (
-          <p className="mt-2 text-muted">Nada mais planejado nesta semana.</p>
-        )}
-      </Card>
-    )
-  }
-
   const strength = item.modality === 'musculacao' && !!item.template_id
-  const meta = [
-    hhmm(item.start_time),
-    strength ? `${item.exercise_count} exercícios` : item.modality_label !== item.title ? item.modality_label : null,
-    `~${item.est_minutes ?? item.duration_min} min`,
-  ].filter(Boolean)
   const isNow = Date.parse(item.starts_at) <= now
+  const parts = [
+    { icon: <Clock size={18} aria-hidden="true" />, text: hhmm(item.start_time) },
+    strength
+      ? { icon: <Dumbbell size={18} aria-hidden="true" />, text: `${item.exercise_count} exercícios` }
+      : { icon: <ModalityDot modality={item.modality} />, text: item.modality_label },
+    { icon: <Timer size={18} aria-hidden="true" />, text: `${item.est_minutes ?? item.duration_min} min` },
+  ]
 
   async function onStart() {
     haptic(15)
     try {
-      const id = await start.mutateAsync({ template_id: item!.template_id, modality: item!.modality, slot_id: item!.slot_id, override_id: item!.override_id })
+      const id = await start.mutateAsync({ template_id: item.template_id, modality: item.modality, slot_id: item.slot_id, override_id: item.override_id })
       go(`sessao/${id}`)
     } catch (e) {
       toast(`Não deu para iniciar: ${(e as Error).message}`, { tone: 'err' })
@@ -133,8 +134,8 @@ function AgoraCard({ item, now, next }: { item?: PlanItem; now: number; next?: P
   async function onMark(status: 'feito' | 'faltou') {
     haptic(15)
     try {
-      const id = await mark.mutateAsync({ item: item!, status })
-      toast(status === 'feito' ? `${item!.title}: feito.` : `${item!.title}: falta registrada.`, {
+      const id = await mark.mutateAsync({ item, status })
+      toast(status === 'feito' ? `${item.title}: feito.` : `${item.title}: falta registrada.`, {
         tone: status === 'feito' ? 'lime' : undefined,
         action: { label: 'Desfazer', run: () => del.mutate(id) },
       })
@@ -144,17 +145,17 @@ function AgoraCard({ item, now, next }: { item?: PlanItem; now: number; next?: P
   }
 
   return (
-    <Card tone="raised" aria-labelledby="agora-title">
-      <h2 id="agora-title" className="text-[36px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{item.title}</h2>
-      <p className="mt-2 text-lg text-muted">{meta.join(' · ')}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+    <Card tone="raised" className={isNow ? 'ring-1 ring-lime/40' : ''} aria-labelledby="agora-title">
+      <div className="flex flex-wrap items-center gap-2">
         <Badge tone={isNow ? 'lime' : 'muted'}>
           {isNow && <span className="live-dot h-1.5 w-1.5 rounded-full bg-lime" aria-hidden="true" />}
           {isNow ? 'agora' : startsIn(item, now)}
         </Badge>
         {kindBadge(item.plan_kind)}
       </div>
-      {item.motivo && <p className="mt-2 text-[15px] leading-relaxed text-muted">{item.motivo}</p>}
+      <h2 id="agora-title" className="mt-3 text-[36px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{item.title}</h2>
+      <div className="mt-3"><MetaRow parts={parts} /></div>
+      {item.motivo && <p className="mt-2 line-clamp-2 text-[15px] text-muted">{item.motivo}</p>}
 
       {strength ? (
         <Button variant="primary" size="xl" className="mt-5 w-full" onClick={onStart} disabled={start.isPending}>
@@ -174,16 +175,41 @@ function AgoraCard({ item, now, next }: { item?: PlanItem; now: number; next?: P
   )
 }
 
+function DayDoneCard({ next }: { next?: PlanItem }) {
+  return (
+    <Card tone="raised" aria-labelledby="agora-title">
+      <div className="flex items-center gap-3">
+        <Moon size={22} className="shrink-0 text-muted" aria-hidden="true" />
+        <h2 id="agora-title" className="text-xl font-semibold">Dia encerrado</h2>
+      </div>
+      {next ? (
+        <button type="button" onClick={() => go('agenda')} className="mt-4 flex w-full items-center gap-4 rounded-2xl bg-bg/60 p-3 text-left ring-1 ring-line hover:ring-muted/50">
+          <DateTile iso={next.date} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] text-muted">Próximo</span>
+            <span className="block truncate text-xl font-semibold">{next.title}</span>
+            <span className="block text-[15px] tabular-nums text-muted">{hhmm(next.start_time)}{next.plan_kind === 'adicionado' && <span className="text-warn"> · remarcado</span>}</span>
+          </span>
+          <ChevronRight size={20} className="shrink-0 text-muted" aria-hidden="true" />
+        </button>
+      ) : (
+        <p className="mt-2 text-muted">Nada mais nesta semana.</p>
+      )}
+    </Card>
+  )
+}
+
 function ActiveSessionCard({ id, title, sets, startedAt }: { id: string; title: string; sets: number; startedAt: string | null }) {
   const min = startedAt ? Math.max(0, Math.round((Date.now() - Date.parse(startedAt)) / 60_000)) : null
   return (
-    <Card tone="raised">
-      <h2 className="text-[36px] font-bold leading-[1.05] tracking-[-0.02em]">{title}</h2>
-      <p className="mt-2 text-lg text-muted">
-        {sets === 1 ? '1 série feita' : `${sets} séries feitas`}{min != null && ` · começou há ${min} min`}
-      </p>
+    <Card tone="raised" className="ring-1 ring-lime/40">
+      <Badge tone="lime"><span className="live-dot h-1.5 w-1.5 rounded-full bg-lime" aria-hidden="true" /> em andamento</Badge>
+      <h2 className="mt-3 text-[36px] font-bold leading-[1.05] tracking-[-0.02em]">{title}</h2>
       <div className="mt-3">
-        <Badge tone="lime"><span className="live-dot h-1.5 w-1.5 rounded-full bg-lime" aria-hidden="true" /> treino em andamento</Badge>
+        <MetaRow parts={[
+          { icon: <Check size={18} aria-hidden="true" />, text: sets === 1 ? '1 série' : `${sets} séries` },
+          ...(min != null ? [{ icon: <Timer size={18} aria-hidden="true" />, text: `${min} min` }] : []),
+        ]} />
       </div>
       <Button variant="primary" size="xl" className="mt-5 w-full" onClick={() => go(`sessao/${id}`)}>
         <Dumbbell size={22} aria-hidden="true" /> Continuar treino
@@ -199,7 +225,6 @@ function EvolucaoCard() {
   const body = useBodyMetrics()
   const ex = useExerciseSessions()
   const prs = usePrs()
-  const streaks = useStreaks()
 
   if (recomp.isPending || trend.isPending) return <Skeleton className="h-72" />
   if (recomp.isError || trend.isError) {
@@ -213,69 +238,125 @@ function EvolucaoCard() {
   const reading = readingLine(recomp.data)
   const fresh = last && last.date >= addDays(todaySP(), -7)
   const avgReady = last && fresh && last.n_7d >= 3
-
-  const weekAgo = addDays(todaySP(), -7)
-  const pr = (prs.data ?? []).find((p) => p.date >= weekAgo)
-  const total = (streaks.data ?? []).find((s) => s.modality === 'total')
+  const spark = w.filter((p) => p.date >= addDays(todaySP(), -28)).map((p) => Number(p.avg_7d))
+  const pr = (prs.data ?? []).find((p) => p.date >= addDays(todaySP(), -7))
 
   return (
     <Card as="article" aria-labelledby="evo-title" className="relative">
-      <button type="button" onClick={() => go('evolucao')} className="absolute inset-0 rounded-[var(--radius-card)]" aria-label="Abrir Evolução" />
-      <CardHead id="evo-title" title="Evolução" aside={<ChevronRight size={22} className="text-muted" aria-hidden="true" />} />
-
-      {!last ? (
-        <div className="mt-3">
-          <Collecting title="Sem pesagem ainda">
-            Mande o peso no chat ao acordar, depois do banheiro. A média de 7 dias aparece com 3 pesagens na semana.
-          </Collecting>
+      <button type="button" onClick={() => go('evolucao')} className="absolute inset-0 z-0 rounded-[var(--radius-card)]" aria-label="Abrir Evolução" />
+      <div className="pointer-events-none relative">
+        <div className="flex items-center justify-between">
+          <h2 id="evo-title" className="text-lg font-semibold">Evolução</h2>
+          <ChevronRight size={22} className="text-muted" aria-hidden="true" />
         </div>
-      ) : (
-        <div className="mt-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[56px] font-bold leading-none tracking-[-0.03em]">{num(avgReady ? last.avg_7d : last.peso_kg)}</span>
-            <span className="text-lg text-muted">kg</span>
-          </div>
-          <p className="mt-1.5 text-[15px] text-muted">
-            {avgReady ? (
-              <>média de 7 dias{last.delta_7d != null && <> · <span className="text-fg">{signed(last.delta_7d)} kg</span> na semana</>}</>
-            ) : (
-              <>pesagem de {dm(last.date)} · a média de 7 dias aparece com 3 pesagens na semana ({fresh ? last.n_7d : 0}/3)</>
-            )}
+
+        {!last ? (
+          <p className="mt-3 flex items-center gap-2 text-[15px] text-muted">
+            <Hourglass size={18} aria-hidden="true" /> Sem pesagem ainda: mande o peso no chat.
           </p>
-        </div>
-      )}
+        ) : (
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <Big size="xl" value={num(avgReady ? last.avg_7d : last.peso_kg)} unit="kg" />
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[15px] text-muted">
+                {avgReady ? (
+                  <>{last.delta_7d != null && <Delta value={last.delta_7d} unit="kg" good="down" />}<span>média 7 dias</span></>
+                ) : (
+                  <span className="flex items-center gap-1.5"><Hourglass size={15} aria-hidden="true" /> pesagem · média com {fresh ? last.n_7d : 0}/3</span>
+                )}
+              </p>
+            </div>
+            {spark.length >= 3 && <Spark values={spark} color="var(--color-lime)" width={120} height={52} label="Média de 7 dias nas últimas 4 semanas" />}
+          </div>
+        )}
 
-      <div className="mt-4">
-        <Triad data={recomp.data} ready={{ firstWeight: w[0]?.date, firstWaist, firstStrength }} />
+        <div className="mt-4">
+          <Triad data={recomp.data} ready={{ firstWeight: w[0]?.date, firstWaist, firstStrength }} />
+        </div>
+
+        {(reading || pr) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {reading && (
+              <span className={`inline-flex items-center gap-1.5 text-[15px] font-semibold ${READING_TONE[recomp.data!.reading]}`}>
+                {recomp.data!.reading === 'no_rumo' ? <Check size={18} strokeWidth={3} aria-hidden="true" /> : null}{reading}
+              </span>
+            )}
+            {pr && (
+              <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-lime/12 px-3 py-1.5 text-sm font-semibold text-lime">
+                <Trophy size={15} aria-hidden="true" /> {pr.exercise_name.split(' ')[0]} {kgFmt(pr.kg)}×{pr.reps}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-      <p className={`mt-3 text-[15px] leading-relaxed ${reading ? READING_TONE[recomp.data!.reading] : 'text-muted'}`}>
-        {reading ?? 'As setas comparam com 4 semanas atrás e aparecem conforme os registros se acumulam.'}
-      </p>
-
-      {(pr || (total && total.this_week_planned > 0)) && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-          {pr && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-lime/12 px-3 py-1.5 text-sm font-semibold text-lime">
-              <Trophy size={16} aria-hidden="true" /> {pr.exercise_name} {kgFmt(pr.kg)} kg × {pr.reps}
-            </span>
-          )}
-          {total && total.this_week_planned > 0 && (
-            <span className="text-sm text-muted">
-              <span className="font-semibold text-fg">{total.this_week_done}/{total.this_week_planned}</span> sessões na semana
-              {total.current_streak_weeks > 0 && <> · sequência de {total.current_streak_weeks} {total.current_streak_weeks === 1 ? 'semana' : 'semanas'}</>}
-            </span>
-          )}
-        </div>
-      )}
     </Card>
   )
 }
 
-// ---------------------------------------------------------------- Seu dia
-function SeuDia({ items, now, heroKey, next, loading }: { items: PlanItem[]; now: number; heroKey: string | null; next?: PlanItem; loading: boolean }) {
+// ---------------------------------------------------------------- Dia: anéis
+function DiaCard() {
+  const daily = useDailyNutrition()
+  const targets = useNutritionTargets()
+  const streaks = useStreaks()
+  const toggle = useToggleCreatine()
+  const date = todaySP()
+  if (daily.isPending || targets.isPending || streaks.isPending) return <Skeleton className="h-52" />
+  const d = daily.data?.find((x) => x.date === date)
+  const t = targets.data
+  const total = (streaks.data ?? []).find((s) => s.modality === 'total')
+  const kcal = d?.kcal ?? 0
+  const p = d?.protein_g ?? 0
+  const creatine = d?.creatine ?? false
+  const done = total?.this_week_done ?? 0
+  const planned = total?.this_week_planned ?? 0
+
+  const rows = [
+    { label: 'Treinos na semana', value: `${done}`, of: `/${planned}`, color: 'var(--color-lime)', to: 'agenda' },
+    { label: 'Calorias', value: intFmt(kcal), of: t?.kcal_target ? `/${intFmt(t.kcal_target)}` : ' kcal', color: 'var(--color-kcal)', to: 'nutricao' },
+    { label: 'Proteína', value: intFmt(p), of: t?.protein_min_g ? `/${t.protein_min_g} g` : ' g', color: 'var(--color-protein)', to: 'nutricao' },
+  ]
+
+  return (
+    <Card aria-label="Semana e nutrição de hoje">
+      <div className="flex items-center gap-5">
+        <Rings size={136} stroke={13} gap={4} rings={[
+          { value: done, target: planned || null, color: 'var(--color-lime)', label: `Treinos: ${done} de ${planned}` },
+          { value: kcal, target: t?.kcal_target ?? null, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${t?.kcal_target ? ` de ${intFmt(t.kcal_target)}` : ''}` },
+          { value: p, target: t?.protein_min_g ?? null, color: 'var(--color-protein)', label: `Proteína: ${intFmt(p)} g${t?.protein_min_g ? ` de ${t.protein_min_g} g` : ''}` },
+        ]} />
+        <ul className="min-w-0 flex-1 divide-y divide-line">
+          {rows.map((r) => (
+            <li key={r.label}>
+              <button type="button" onClick={() => go(r.to)} className="flex min-h-12 w-full flex-col justify-center py-1.5 text-left">
+                <span className="flex items-center gap-1.5 text-[13px] text-muted">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} aria-hidden="true" />{r.label}
+                </span>
+                <span className="text-[22px] font-bold leading-tight tabular-nums">{r.value}<span className="text-[15px] font-medium text-muted">{r.of}</span></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-4">
+        <CreatineButton on={creatine} onToggle={() => {
+          haptic(15)
+          toggle.mutate({ date, value: !creatine }, { onError: () => toast('Não salvou a creatina. Tente de novo.', { tone: 'err' }) })
+        }} />
+      </div>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------- Semana + o resto do dia
+function SemanaCard({ items, now, heroKey, next }: { items: PlanItem[]; now: number; heroKey: string | null; next?: PlanItem }) {
+  const week = useWeek()
+  const streaks = useStreaks()
   const mark = useMarkSession()
   const del = useDeleteSession()
-  if (loading) return null
+  const today = todaySP()
+  if (week.isPending) return <Skeleton className="h-44" />
+  const days = weekDays(weekStart(today), week.data ?? [], today)
+  const total = (streaks.data ?? []).find((s) => s.modality === 'total')
   const rest = items.filter((i) => key(i) !== heroKey)
 
   async function onMark(item: PlanItem, status: 'feito' | 'faltou') {
@@ -291,22 +372,28 @@ function SeuDia({ items, now, heroKey, next, loading }: { items: PlanItem[]; now
   }
 
   return (
-    <Card aria-labelledby="dia-title">
-      <CardHead id="dia-title" title="Seu dia" sub={items.length === 0 ? 'Domingo de folga: nada na grade.' : undefined} />
+    <Card aria-labelledby="sem-title">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="sem-title" className="text-lg font-semibold">Semana</h2>
+        {total && total.current_streak_weeks > 0 && (
+          <span className="inline-flex items-center gap-1 text-[15px] font-semibold tabular-nums">
+            <Flame size={18} className="text-kcal" aria-hidden="true" />{total.current_streak_weeks}
+            <span className="font-normal text-muted">{total.current_streak_weeks === 1 ? 'semana seguida' : 'semanas seguidas'}</span>
+          </span>
+        )}
+      </div>
+      <div className="-mx-2 mt-3"><WeekStrip days={days} onPick={() => go('agenda')} /></div>
+
       {rest.length > 0 && (
-        <ul className="mt-3 divide-y divide-line">
+        <ul className="mt-3 divide-y divide-line border-t border-line">
           {rest.map((i) => {
-            const past = Date.parse(i.ends_at) <= now
-            const unlogged = i.active && !i.session_status && past
+            const unlogged = i.active && !i.session_status && Date.parse(i.ends_at) <= now
             return (
               <li key={key(i)} className="py-3">
                 <div className="flex items-center gap-3">
                   <span className="w-12 shrink-0 text-[15px] font-medium tabular-nums text-muted">{hhmm(i.start_time)}</span>
                   <ModalityDot modality={i.modality} />
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate font-medium ${!i.active ? 'text-muted line-through' : ''}`}>{i.title}</p>
-                    {(i.motivo && !i.active) && <p className="text-sm text-muted">{i.motivo}</p>}
-                  </div>
+                  <p className={`min-w-0 flex-1 truncate font-medium ${!i.active ? 'text-muted line-through' : ''}`}>{i.title}</p>
                   <StatusPill item={i} unlogged={unlogged} />
                 </div>
                 {unlogged && (
@@ -320,10 +407,9 @@ function SeuDia({ items, now, heroKey, next, loading }: { items: PlanItem[]; now
           })}
         </ul>
       )}
-      {next && (
-        <p className={`text-[15px] text-muted ${rest.length ? 'mt-1 border-t border-line pt-3' : 'mt-3'}`}>
-          Depois: <span className="font-medium text-fg">{capitalize(wdShort(next.date))} · {hhmm(next.start_time)} · {next.title}</span>
-          {next.plan_kind === 'adicionado' && <span className="text-warn"> (remarcado)</span>}
+      {next && heroKey && (
+        <p className="mt-1 flex items-center gap-2 border-t border-line pt-3 text-[15px] text-muted">
+          Depois <span className="truncate font-medium text-fg">{capitalize(wdShort(next.date))} {hhmm(next.start_time)} · {next.title}</span>
         </p>
       )}
     </Card>

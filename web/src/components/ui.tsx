@@ -210,26 +210,3 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     </dialog>
   )
 }
-
-/** Título de seção da tela (fora de card). */
-export function SectionTitle({ children, aside, id }: { children: ReactNode; aside?: ReactNode; id?: string }) {
-  return (
-    <div className="mt-4 flex items-end justify-between gap-3 px-1">
-      <h2 id={id} className="text-xl font-semibold">{children}</h2>
-      {aside}
-    </div>
-  )
-}
-
-/** Cabeçalho de tela com título grande e ações. */
-export function ScreenHeader({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
-  return (
-    <header className="flex items-start justify-between gap-3 pt-2">
-      <div className="min-w-0">
-        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">{title}</h1>
-        {sub && <p className="mt-0.5 text-[15px] text-muted">{sub}</p>}
-      </div>
-      {actions && <div className="-mr-2 flex shrink-0 items-center">{actions}</div>}
-    </header>
-  )
-}

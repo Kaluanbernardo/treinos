@@ -27,11 +27,12 @@ export function BottomNav({ tab }: { tab: Tab | null }) {
                 onClick={() => go(id)}
                 aria-current={active ? 'page' : undefined}
                 className={`relative flex h-16 w-full flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-150 ${
-                  active ? 'text-lime' : 'text-muted hover:text-fg'
+                  active ? 'text-fg' : 'text-muted hover:text-fg'
                 }`}
               >
-                {active && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-lime" aria-hidden="true" />}
-                <Icon size={24} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />
+                <span className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors duration-150 ${active ? 'bg-lime/15 text-lime' : ''}`}>
+                  <Icon size={22} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />
+                </span>
                 {label}
               </button>
             </li>

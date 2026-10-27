@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export function Login() {
@@ -38,7 +39,7 @@ export function Login() {
             className="h-14 rounded-2xl border border-line bg-card px-4 text-fg outline-none focus:border-lime"
           />
         </label>
-        {error && <p role="alert" className="text-err">⚠ {error}</p>}
+        {error && <p role="alert" className="flex items-center gap-2 text-err"><AlertTriangle size={18} aria-hidden="true" /> {error}</p>}
         <button
           type="submit" disabled={busy}
           className="mt-2 h-14 rounded-2xl bg-lime text-lg font-semibold text-bg transition-opacity duration-150 disabled:opacity-60"

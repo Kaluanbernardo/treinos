@@ -2,41 +2,64 @@ import { useState } from 'react'
 import { Check, Trophy } from 'lucide-react'
 import { useMonthlySummary, useWeeklySummary } from '../lib/api'
 import type { PeriodSummary } from '../lib/types'
-import { addDays, dm, intFmt, monthLabel, num, signed, todaySP, weekStart } from '../lib/format'
+import { addDays, dm, intFmt, monthLabel, num, todaySP, weekStart } from '../lib/format'
+import { Ring } from './Ring'
+import { Big, Delta, Meter } from './viz'
 import { Button, Card, CardHead } from './ui'
 
-/** Grade de números de um período (semana ou mês). Usada no Hoje e no bloco Resumo da Evolução. */
+/** Números de um período (semana ou mês): anel de sessões + grade com barras contra a meta. Hoje e Evolução. */
 export function SummaryStats({ row, prev }: { row: PeriodSummary; prev?: PeriodSummary }) {
   const waistDelta = row.waist_last_cm != null && prev?.waist_last_cm != null ? row.waist_last_cm - prev.waist_last_cm : null
-  const logged = `${row.days_logged}/${row.days_in_period} dias`
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
-      <Stat label="Sessões" value={<>{row.done}<span className="text-lg text-muted">/{row.planned}</span></>}
-        sub={row.planned ? `${Math.round((row.done / row.planned) * 100)}% do planejado` : 'nada planejado'} hero />
-      <Stat label="Recordes" value={<span className={row.n_prs ? 'text-lime' : ''}>{row.n_prs}</span>}
-        sub={row.n_sets ? `${row.n_sets} séries · ${intFmt(row.volume_kg)} kg` : 'sem séries registradas'}
-        icon={row.n_prs ? <Trophy size={18} className="text-lime" aria-hidden="true" /> : undefined} />
-      <Stat label="Peso" value={row.weight_delta_kg != null ? `${signed(row.weight_delta_kg)} kg` : row.weight_avg7_end != null ? `${num(row.weight_avg7_end)} kg` : '—'}
-        sub={row.weight_delta_kg != null ? `média 7d fechou em ${num(row.weight_avg7_end)} kg` : row.weight_avg7_end != null ? 'primeiro período: sem variação ainda' : 'sem pesagem'} />
-      <Stat label="Cintura" value={row.waist_last_cm != null ? `${num(row.waist_last_cm)} cm` : '—'}
-        sub={waistDelta != null ? `${signed(waistDelta)} cm vs anterior` : row.waist_last_cm != null ? 'primeira medida' : 'sem medida'} />
-      <Stat label="Kcal (média)" value={row.kcal_avg != null ? intFmt(row.kcal_avg) : '—'}
-        sub={row.days_logged ? `${logged} registrados${row.kcal_target ? ` · meta ${intFmt(row.kcal_target)}` : ''}` : 'nenhum dia registrado'} />
-      <Stat label="Proteína (média)" value={row.protein_avg_g != null ? `${intFmt(row.protein_avg_g)} g` : '—'}
-        sub={row.days_logged ? `${logged}${row.protein_target_min_g ? ` · meta ${intFmt(row.protein_target_min_g)} g` : ''}` : 'nenhum dia registrado'} />
-      <Stat label="Creatina" value={<>{row.creatine_days}<span className="text-lg text-muted">/{row.days_in_period}</span></>} sub="dias com check" />
-    </dl>
+    <div>
+      <div className="flex items-center gap-4">
+        <Ring value={row.done} target={row.planned || null} color="var(--color-lime)" size={84} stroke={9} label={`Sessões: ${row.done} de ${row.planned}`}>
+          <span className="text-lg font-bold tabular-nums">{row.planned ? `${Math.round((row.done / row.planned) * 100)}%` : '—'}</span>
+        </Ring>
+        <div className="min-w-0">
+          <p className="text-[13px] text-muted">Sessões</p>
+          <Big size="md" value={row.done} unit={`/${row.planned}`} />
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-sm tabular-nums text-muted">
+            <span className={`flex items-center gap-1 ${row.n_prs ? 'font-semibold text-lime' : ''}`}><Trophy size={15} aria-hidden="true" />{row.n_prs} {row.n_prs === 1 ? 'PR' : 'PRs'}</span>
+            {row.n_sets > 0 && <span>{row.n_sets} séries · {intFmt(row.volume_kg)} kg</span>}
+          </p>
+        </div>
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-line pt-4">
+        <Cell label="Peso (média 7d)">
+          {row.weight_delta_kg != null ? <Delta value={row.weight_delta_kg} unit="kg" good="down" className="text-xl" />
+            : <span className="text-xl font-bold tabular-nums">{row.weight_avg7_end != null ? `${num(row.weight_avg7_end)} kg` : '—'}</span>}
+        </Cell>
+        <Cell label="Cintura">
+          {waistDelta != null ? <Delta value={waistDelta} unit="cm" good="down" className="text-xl" />
+            : <span className="text-xl font-bold tabular-nums">{row.waist_last_cm != null ? `${num(row.waist_last_cm)} cm` : '—'}</span>}
+        </Cell>
+        <Cell label={`Kcal · ${row.days_logged}/${row.days_in_period} dias`}>
+          <span className="text-xl font-bold tabular-nums">{row.kcal_avg != null ? intFmt(row.kcal_avg) : '—'}</span>
+          {row.kcal_avg != null && row.kcal_target ? <Meter className="mt-1.5" height={6} value={row.kcal_avg} max={row.kcal_target} target={row.kcal_target} color="var(--color-kcal)" label={`Média ${intFmt(row.kcal_avg)} de ${intFmt(row.kcal_target)} kcal`} /> : null}
+        </Cell>
+        <Cell label="Proteína (média)">
+          <span className="text-xl font-bold tabular-nums">{row.protein_avg_g != null ? `${intFmt(row.protein_avg_g)} g` : '—'}</span>
+          {row.protein_avg_g != null && row.protein_target_min_g ? <Meter className="mt-1.5" height={6} value={row.protein_avg_g} max={row.protein_target_max_g ?? row.protein_target_min_g} band={[row.protein_target_min_g, row.protein_target_max_g ?? row.protein_target_min_g]} color="var(--color-protein)" label={`Média ${intFmt(row.protein_avg_g)} g; meta ${intFmt(row.protein_target_min_g)} g`} /> : null}
+        </Cell>
+        <Cell label="Creatina" className="col-span-2">
+          <span className="flex items-center gap-3">
+            <span className="text-xl font-bold tabular-nums">{row.creatine_days}<span className="text-sm font-medium text-muted">/{row.days_in_period}</span></span>
+            <span className="flex flex-1 gap-1" aria-hidden="true">
+              {Array.from({ length: Math.min(row.days_in_period, 31) }, (_, i) => <span key={i} className={`h-2 flex-1 rounded-full ${i < row.creatine_days ? 'bg-lime' : 'bg-line'}`} />)}
+            </span>
+          </span>
+        </Cell>
+      </dl>
+    </div>
   )
 }
 
-function Stat({ label, value, sub, hero, icon }: { label: string; value: React.ReactNode; sub: string; hero?: boolean; icon?: React.ReactNode }) {
+function Cell({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd>
-        <span className={`flex items-center gap-1.5 font-bold leading-tight tabular-nums ${hero ? 'text-[32px]' : 'text-2xl'}`}>{icon}{value}</span>
-        <span className="mt-0.5 block text-[13px] leading-snug text-muted">{sub}</span>
-      </dd>
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-[13px] text-muted">{label}</dt>
+      <dd className="mt-1">{children}</dd>
     </div>
   )
 }
@@ -70,7 +93,7 @@ export function SummaryCard() {
       <CardHead id="sum-title" title={mode === 'mes' ? 'Seu mês' : 'Sua semana'}
         sub={mode === 'mes' ? monthLabel(row.period_start) : `${dm(row.period_start)} a ${dm(row.period_end)}`} />
       <div className="mt-4">
-        {empty ? <p className="text-[15px] text-muted">Ainda sem registros nesse período. O próximo resumo já vai ter números.</p> : <SummaryStats row={row} prev={list[idx - 1]} />}
+        {empty ? <p className="text-[15px] text-muted">Sem registros nesse período.</p> : <SummaryStats row={row} prev={list[idx - 1]} />}
       </div>
       <Button className="mt-5 w-full" onClick={() => { localStorage.setItem(key, '1'); rerender((x) => x + 1) }}>
         <Check size={18} aria-hidden="true" /> Entendi
