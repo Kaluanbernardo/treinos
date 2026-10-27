@@ -249,6 +249,8 @@ export interface NutritionTargets {
   fat_min_g: number | null
   fat_max_g: number | null
   carb_target_g: number | null
+  water_min_ml: number | null
+  water_max_ml: number | null
 }
 
 export interface FoodLog {
