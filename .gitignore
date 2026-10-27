@@ -1,0 +1,14 @@
+# segredos — nunca versionar
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.dump
+
+node_modules/
+dist/
+dev-dist/
+.DS_Store
+*.log
+*.tsbuildinfo
