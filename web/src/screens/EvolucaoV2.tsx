@@ -93,7 +93,7 @@ function VolumeGrupoBlock({ period }: { period: Period }) {
                 <span className="tabular-nums text-muted"><b className="text-fg">{r.sets}</b> séries{r.avgSets != null && ` · média ${r.avgSets.toFixed(1).replace('.', ',')}`}</span>
               </div>
               <div className="relative mt-1.5 h-2.5 rounded-full bg-line" aria-hidden="true">
-                <div className="h-2.5 rounded-full bg-protein transition-[width] duration-500" style={{ width: `${(r.sets / max) * 100}%` }} />
+                <div className="h-2.5 rounded-full bg-fg/70 transition-[width] duration-500" style={{ width: `${(r.sets / max) * 100}%` }} />
                 {r.avgSets != null && <div className="absolute -top-1 h-4.5 w-0.5 rounded bg-fg" style={{ left: `${(r.avgSets / max) * 100}%` }} />}
               </div>
             </li>

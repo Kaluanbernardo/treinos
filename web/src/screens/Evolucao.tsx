@@ -71,7 +71,7 @@ function RecompBlock() {
         <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm">
           {d.weight_prev_kg != null && <Pair label="Peso (média 7d)" value={`${num(d.weight_prev_kg)} → ${num(d.weight_now_kg)} kg`} />}
           {d.waist_prev_cm != null && <Pair label="Cintura" value={`${num(d.waist_prev_cm)} → ${num(d.waist_now_cm)} cm`} />}
-          {d.weight_pace_pct_week != null && <Pair label="Ritmo" value={`${signed(d.weight_pace_pct_week, 2)}%/sem`} />}
+          {d.weight_pace_pct_week != null && <Pair label="Ritmo (4 sem)" value={`${signed(d.weight_pace_pct_week, 2)}%/sem`} />}
           {d.strength_n_exercises ? <Pair label="Força" value={`mediana de ${d.strength_n_exercises} exercícios`} /> : null}
         </dl>
       )}
@@ -126,7 +126,7 @@ function CorpoBlock({ period }: { period: Period }) {
             <span className="text-[44px] font-bold leading-none tracking-[-0.02em]">{num(last.avg_7d)}</span>
             <span className="text-muted">kg · média 7d</span>
           </div>
-          <PaceLine pace={last.pace_pct_week} cap={last.max_loss_pct_week} above={last.above_cap} />
+          <PaceLine pace4={last.pace_pct_week_28d} pace1={last.pace_pct_week} cap={last.max_loss_pct_week} />
           <div className="mt-3">
             {pts.length >= 2 ? (
               <TrendChart ariaLabel="Peso diário e média de 7 dias" color="var(--color-lime)" unit="kg"
@@ -157,12 +157,15 @@ function CorpoBlock({ period }: { period: Period }) {
   )
 }
 
-function PaceLine({ pace, cap, above }: { pace: number | null; cap: number | null; above: boolean }) {
-  if (pace == null) return <p className="mt-1.5 text-sm text-muted">Ritmo semanal aparece com 2 semanas de pesagens.</p>
+function PaceLine({ pace4, pace1, cap }: { pace4: number | null; pace1: number | null; cap: number | null }) {
+  const pace = pace4 ?? pace1
+  if (pace == null) return <p className="mt-1.5 text-sm text-muted">O ritmo semanal aparece com 2 semanas de pesagens.</p>
+  const window = pace4 != null ? '4 sem' : 'última semana'
+  const above = -pace > (cap ?? 0.5)
   return (
-    <p className={`mt-1.5 flex items-center gap-1.5 text-sm ${above ? 'text-warn' : 'text-muted'}`}>
+    <p className={`mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm ${above ? 'text-warn' : 'text-muted'}`}>
       {above && <AlertTriangle size={15} aria-hidden="true" />}
-      Ritmo: <span className="font-semibold text-fg tabular-nums">{signed(pace, 2)}%/sem</span> · teto de perda {num(cap ?? 0.5, 1)}%
+      Ritmo ({window}): <span className="font-semibold text-fg tabular-nums">{signed(pace, 2)}%/sem</span> · teto de perda {num(cap ?? 0.5, 1)}%
       {above && ' (acima do teto)'}
     </p>
   )
@@ -199,7 +202,7 @@ function MeasureView({ rows, m, cut }: { rows: BodyMetric[]; m: (typeof MEASURES
       </div>
       <div className="mt-2">
         {inPeriod.length >= 2
-          ? <TrendChart ariaLabel={`${m.label} ao longo do tempo`} color={m.key === 'gordura_pct' ? 'var(--color-fat)' : 'var(--color-protein)'} unit={m.unit} line="value" dots={false} data={inPeriod} valueName={m.label} height={170} />
+          ? <TrendChart ariaLabel={`${m.label} ao longo do tempo`} color={m.key === 'gordura_pct' ? 'var(--color-fat)' : 'var(--color-fg)'} unit={m.unit} line="value" dots={false} data={inPeriod} valueName={m.label} height={170} />
           : <p className="text-sm text-muted">Menos de 2 medidas neste período. Troque para "Tudo".</p>}
       </div>
     </div>
@@ -301,7 +304,7 @@ function ForcaBlock({ period }: { period: Period }) {
             data={inPeriod.filter((r) => r.top_e1rm != null).map((r) => ({ date: r.date, value: r.top_e1rm, label: r.top_kg ? `melhor série ${kgFmt(r.top_kg)} kg × ${r.top_reps}` : undefined }))}
             valueName="1RM est." />
           <h3 className="mt-4 text-sm font-medium text-muted">Volume da sessão (kg × reps)</h3>
-          <Bars ariaLabel={`Volume por sessão de ${cur.name}`} color="var(--color-protein)" unit="kg" height={130}
+          <Bars ariaLabel={`Volume por sessão de ${cur.name}`} color="var(--color-muted)" unit="kg" height={130}
             data={inPeriod.map((r) => ({ key: r.session_id, label: dm(r.date), value: Number(r.volume_kg), sub: `${r.n_sets} séries${r.is_volume_pr ? ' · recorde de volume' : ''}` }))} />
         </>
       )}

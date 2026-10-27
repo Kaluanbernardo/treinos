@@ -1,4 +1,9 @@
-# Fitness Kaluan — F0 (Fundação)
+# Fitness Kaluan
+
+> **Estado (28/10/2026): F0–F4 entregues.** Guia de trabalho no repo: `CLAUDE.md`. Operação do assistente:
+> `docs/assistente.md` (`scripts/fit --help`). Deploy: push em `main` → GitHub Pages
+> (https://kaluanbernardo.github.io/treinos/). Migrations novas: `scripts/apply_migrations_https.py`.
+> As seções abaixo descrevem a fundação (F0) e continuam válidas.
 
 PWA pessoal (single user) sobre Supabase. O app é um painel; a entrada de dados é pelo chat (o assistente
 escreve direto no banco com o role `bot`). Plano completo: `../app-plan.md`.

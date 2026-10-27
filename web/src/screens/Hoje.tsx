@@ -323,7 +323,7 @@ function SeuDia({ items, now, heroKey, next, loading }: { items: PlanItem[]; now
       {next && (
         <p className={`text-[15px] text-muted ${rest.length ? 'mt-1 border-t border-line pt-3' : 'mt-3'}`}>
           Depois: <span className="font-medium text-fg">{capitalize(wdShort(next.date))} · {hhmm(next.start_time)} · {next.title}</span>
-          {next.plan_kind === 'adicionado' && <span className="text-lime"> (remarcado)</span>}
+          {next.plan_kind === 'adicionado' && <span className="text-warn"> (remarcado)</span>}
         </p>
       )}
     </Card>

@@ -190,16 +190,16 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   useEffect(() => {
     const d = ref.current
     if (!d) return
-    if (open && !d.open) d.showModal()
+    if (open && !d.open) { d.showModal(); d.focus() }
     if (!open && d.open) d.close()
   }, [open])
   return (
     <dialog
-      ref={ref} onClose={onClose} aria-label={title}
+      ref={ref} onClose={onClose} aria-label={title} tabIndex={-1}
       onClick={(e) => { if (e.target === ref.current) onClose() }}
-      className="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 text-fg backdrop:bg-black/60"
+      className="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 text-fg outline-none backdrop:bg-black/60"
     >
-      <div className="mx-auto max-h-[85dvh] max-w-lg overflow-y-auto rounded-t-[24px] border-t border-line bg-card px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)]">
+      <div className="mx-auto max-h-[85dvh] max-w-lg overflow-y-auto rounded-t-[24px] outline-none border-t border-line bg-card px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)]">
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line" aria-hidden="true" />
         <div className="flex items-start justify-between gap-3">
           <h2 className="pt-2 text-xl font-semibold">{title}</h2>

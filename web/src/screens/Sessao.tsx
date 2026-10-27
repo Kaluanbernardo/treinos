@@ -99,9 +99,10 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   function confirm(n: number) {
     const d = draftFor(n)
     if (d.reps == null || d.reps <= 0) { toast('Defina as repetições antes de confirmar.', { tone: 'err' }); return }
+    if (d.kg == null && te.reps_unit !== 'max') { toast('Defina a carga antes de confirmar (0 = peso do corpo).', { tone: 'err' }); return }
     const row: SetLog = {
       id: crypto.randomUUID(), session_id: id, exercise_id: ex.id, set_number: n,
-      kg: d.kg ?? 0, reps: d.reps, warmup: false, logged_at: new Date().toISOString(),
+      kg: d.kg, reps: d.reps, warmup: false, logged_at: new Date().toISOString(),
     }
     const isPr = prFlagsFor([...exSets, row], exBest).get(row.id)
     haptic(isPr ? [30, 60, 30] : 15)
@@ -502,7 +503,7 @@ function Resumo({ id }: { id: string }) {
               <li key={r.exercise_id} className="flex items-center justify-between gap-3 py-3">
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{r.exercise_name}</span>
-                  <span className="block text-sm text-muted">{r.n_sets} séries · {intFmt(r.volume_kg)} kg{r.top_e1rm ? ` · 1RM est. ${kgFmt(Math.round(r.top_e1rm))} kg` : ''}</span>
+                  <span className="block text-sm text-muted">{r.n_sets} séries · {intFmt(r.volume_kg)} kg vol.{r.top_e1rm ? <> · <span className="whitespace-nowrap">1RM est. {kgFmt(Math.round(r.top_e1rm))} kg</span></> : ''}</span>
                 </span>
                 {r.top_kg ? <span className="shrink-0 text-lg font-semibold tabular-nums">{kgFmt(r.top_kg)} × {r.top_reps}</span>
                   : <span className="shrink-0 text-right text-[13px] leading-snug text-muted">acima de 12 reps<br />(fora do 1RM)</span>}
@@ -525,7 +526,7 @@ function Stat({ label, value, unit, hero }: { label: string; value: string; unit
     <div>
       <dt className="text-sm text-muted">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-1">
-        <span className={`${hero ? 'text-[44px] text-lime' : 'text-[28px]'} font-bold leading-none tracking-[-0.02em] tabular-nums`}>{value}</span>
+        <span className={`${hero ? 'text-[44px]' : 'text-[28px]'} font-bold leading-none tracking-[-0.02em] tabular-nums`}>{value}</span>
         {unit && <span className="text-sm text-muted">{unit}</span>}
       </dd>
     </div>

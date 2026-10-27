@@ -22,6 +22,6 @@ STORY: Open → see today's next session and press one lime button → between s
 
 FIRST VIEWPORT (Hoje, 390×844): greeting row with Notas/Config icon buttons; the Agora card (title 34–40 px, time · details, lime 64 px primary action at the card's bottom); directly under it the Evolução card (hero weight number + the recomposition triad + latest PR seal + week adherence). Daily nutrition mini-rings, creatine toggle and next activity follow, all reachable above the bottom nav with safe-area padding.
 
-FORM: Established world extended (palette, type and 5-tab structure pinned by plan §3/§10). seed: none (world and screen structure pinned by the brief; no concept roll).
+FORM: Established world extended (palette, type and 5-tab structure pinned by plan §3/§10). seed:bf5c07637d932d3f (rolled for the record; world and screen structure stay pinned by plan §3/§10).
 
-SIGNATURE: The recomposition triad: peso · cintura · força as one instrument row of drawn arrows with word + value, the same component on Hoje, at the top of Evolução and in the week/month summaries; plus the lime "PR" seal that pops (haptic double pulse) the moment a confirmed set beats a record.
+SIGNATURE: The recomposition triad: peso · cintura · força as one instrument row of drawn arrows with word + value, the same component on Hoje and at the top of Evolução (the week/month summaries sit directly below it and carry the same signals as period numbers, so the triad is not repeated there); plus the lime "PR" seal that pops (haptic double pulse) the moment a confirmed set beats a record.
