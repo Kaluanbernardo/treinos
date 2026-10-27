@@ -1,17 +1,81 @@
 #!/usr/bin/env python3
-"""fit — acesso do bot ao banco por HTTPS (Supabase Management API), executando como role `bot`.
-Uso: fit sql "<SQL>" | fit today | fit body <kg> [cintura_cm] [--date AAAA-MM-DD] | fit evo | fit admin-sql "<SQL>" (postgres; uso de manutenção)
-Token: $SUPABASE_ACCESS_TOKEN ou /home/box/.secrets/supabase_access_token (nunca impresso)."""
-import json, os, re, sys, urllib.request, urllib.error
+"""fit — CLI do assistente para o banco do app (Supabase), por HTTPS, executando como role `bot`.
+
+Cada comando roda `begin; set local role bot; <um comando SQL>; commit;` pela Management API:
+RLS e grants mínimos do bot valem (sem DDL, sem auth). Toda escrita leva source='bot'.
+Datas: AAAA-MM-DD, 'hoje', 'ontem', 'amanha' ou dd/mm. Horas: HH:MM.
+
+LEITURA
+  fit today                                   plano de hoje (v_today) com status
+  fit week [--next]                           semana atual (ou a próxima) com exceções e status
+  fit evo                                     recomposição + tendência de peso + PRs recentes ("como estou indo?")
+  fit summary [week|month] [--n 2]            resumos (v_weekly_summary / v_monthly_summary)
+  fit day [data]                              refeições do dia + totais vs metas
+  fit food <busca> [--limit 8]                busca TACO/custom (sem acento, por similaridade)
+  fit notes [--limit 10]                      últimas notas do assistente
+  fit sessions [--limit 10]                   últimas sessões (v_sessions)
+  fit sql "<SELECT ...>"                      SQL livre como bot (um comando)
+
+TREINO
+  fit session feito|faltou|parcial [--date d] [--time HH:MM | --title texto] [--note t]
+        marca a atividade do plano daquele dia (sem --time/--title: a única/primeira pendente)
+  fit log-set <exercicio_slug> <kg> <reps> [--set n] [--date d] [--rir r] [--warmup] [--session id]
+        registra série (cria/usa a sessão do dia da ficha que contém o exercício)
+  fit carga <exercicio_slug> <kg> [--template slug] [--motivo t]    carga-alvo (gera bot_note 'carga')
+
+AGENDA (exceções; a grade base só muda com confirmação explícita do Kaluan)
+  fit move <data> <HH:MM> --to <data> <HH:MM> [--motivo t]   remarca (pula a original + adiciona a nova)
+  fit skip <data> <HH:MM> [--motivo t]                        pula uma ocorrência
+  fit add <data> <HH:MM> <modalidade> [--template slug] [--title t] [--dur min] [--motivo t]
+        modalidade: musculacao | muay_thai | jiu_jitsu | cross | funcional
+
+CORPO
+  fit body [peso] [--cintura x] [--abdomen x] [--quadril x] [--peito x] [--braco x] [--coxa x]
+           [--gordura x] [--date d] [--nota t]        upsert na data (campos omitidos ficam como estão)
+  fit body <peso> <cintura>                            atalho legado
+  fit photo <arquivo> --pose frente|lado|costas [--date d] [--nota t]
+        remove EXIF, redimensiona (1600 px) e gera miniatura (400 px), sobe no bucket privado `progress`
+
+NUTRIÇÃO
+  fit meal <refeicao> <item> [<item> ...] [--date d] [--estimated] [--note t]
+        item = "<codigo|nome>=<qtd>"  qtd: 150g | 2 "colher de sopa" (ex.: "taco:3=150g", "taco:410=1 filé")
+        item livre: "desc=Whey 1 scoop;g=30;kcal=120;p=24;c=3;f=1.5"
+  fit meal-del <id>                                     apaga um item de refeição
+  fit food-add <slug> "<nome>" <kcal> <prot> <carb> <gord> [--fiber x] [--portion "1 un=350"]
+        alimento custom por 100 g (código custom:<slug>)
+  fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
+  fit creatine [sim|nao] [--g 5] [--date d]             check de creatina
+  fit water <ml> [--date d]                             água do dia
+
+NOTAS
+  fit note <nota|decisao|carga|remarcacao|alerta|resumo> "<texto>"
+
+MANUTENÇÃO
+  fit admin-sql "<SQL>"                                 como postgres (evitar; só manutenção)
+
+Token: $SUPABASE_ACCESS_TOKEN ou /home/box/.secrets/supabase_access_token (nunca impresso).
+FIT_ROLLBACK=1 executa cada comando e desfaz (teste sem gravar).
+"""
+import datetime as dt, json, os, re, sys, urllib.error, urllib.parse, urllib.request
+from zoneinfo import ZoneInfo
+
 REF = os.environ.get("SUPABASE_PROJECT_REF", "qlphmxjehsexuxspspaw")
 TOKEN_FILE = "/home/box/.secrets/supabase_access_token"
+KEYS_FILE = "/home/box/.secrets/fitness_supabase_keys.env"
+TZ = ZoneInfo("America/Sao_Paulo")
+MODALITIES = ("musculacao", "muay_thai", "jiu_jitsu", "cross", "funcional")
+NOTE_KINDS = ("nota", "decisao", "carga", "remarcacao", "alerta", "resumo")
 
+
+# ---------------------------------------------------------------- transporte
 def token():
     t = os.environ.get("SUPABASE_ACCESS_TOKEN")
     if not t and os.path.exists(TOKEN_FILE):
         t = open(TOKEN_FILE).read().strip()
-    if not t: sys.exit("erro: SUPABASE_ACCESS_TOKEN ausente")
+    if not t:
+        sys.exit("erro: SUPABASE_ACCESS_TOKEN ausente")
     return t
+
 
 def run(query):
     req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query",
@@ -20,48 +84,615 @@ def run(query):
     try:
         return json.load(urllib.request.urlopen(req, timeout=120))
     except urllib.error.HTTPError as e:
-        try: msg = json.loads(e.read()).get("message", "")
-        except Exception: msg = str(e)
+        try:
+            msg = json.loads(e.read()).get("message", "")
+        except Exception:
+            msg = str(e)
         sys.exit(f"erro {e.code}: {msg}")
+
 
 # Bloqueia tentativas de sair do role bot dentro da mesma requisição.
 ESCAPE = re.compile(r"\b(role|session_authorization|commit|rollback|begin|abort|savepoint|release|prepare|reset|set_config)\b", re.I)
 
+
 def bot(query):
-    if ESCAPE.search(re.sub(r"'(?:[^']|'')*'", "''", query)):
+    bare = re.sub(r"'(?:[^']|'')*'", "''", query)
+    if ESCAPE.search(bare):
         sys.exit("erro: SQL do bot não pode conter controle de transação/role (begin/commit/set/reset/role...)")
     q = query.strip().rstrip(";").strip()
     bare = re.sub(r"'(?:[^']|'')*'", "''", q)
     if ";" in bare or "$" in bare or "--" in bare or "/*" in bare:
         sys.exit("erro: o bot executa um único comando por chamada (sem ';', '$', comentários)")
-    rows = run(f"begin; set local role bot; set local statement_timeout = '30s';\n{q};\ncommit;")
-    return rows
+    end = "rollback;" if os.environ.get("FIT_ROLLBACK") else "commit;"   # FIT_ROLLBACK=1: testa sem gravar
+    return run(f"begin; set local role bot; set local statement_timeout = '30s';\n{q};\n{end}")
+
 
 def lit(v):
     return "null" if v is None else "'" + str(v).replace("'", "''") + "'"
 
+
 def show(rows):
     print(json.dumps(rows, ensure_ascii=False, indent=1, default=str))
 
-def main(a):
-    if not a or a[0] in ("-h", "--help"): print(__doc__); return
-    c = a[0]
-    if c == "sql" and len(a) == 2: show(bot(a[1]))
-    elif c == "admin-sql" and len(a) == 2: show(run(a[1]))
-    elif c == "today":
-        show(bot("select start_time, title, modality_label, plan_kind, template_name, exercise_count, session_status, motivo from v_today order by start_time"))
-    elif c == "body" and len(a) >= 2:
-        args = a[1:]; date = None
-        if "--date" in args:
-            i = args.index("--date"); date = args[i+1]; del args[i:i+2]
-        kg = float(args[0].replace(",", ".")); waist = float(args[1].replace(",", ".")) if len(args) > 1 else None
-        d = lit(date) + "::date" if date else "public.today_sp()"
-        show(bot(f"insert into body_metrics (date, peso_kg, cintura_cm, source) values ({d}, {kg}, {lit(waist)}::numeric, 'bot') "
-                 f"on conflict (date) do update set peso_kg = excluded.peso_kg, cintura_cm = coalesce(excluded.cintura_cm, body_metrics.cintura_cm), source = 'bot' "
-                 f"returning date, peso_kg, cintura_cm"))
-    elif c == "evo":
-        print("# v_recomposition"); show(bot("select * from v_recomposition"))
-        print("# v_weight_trend (últimos 14)"); show(bot("select date, peso_kg, avg_7d, delta_7d, pace_pct_week, above_cap from v_weight_trend order by date desc limit 14"))
-    else: print(__doc__); sys.exit(2)
 
-if __name__ == "__main__": main(sys.argv[1:])
+def table(rows, cols=None):
+    if not rows:
+        print("(nada)")
+        return
+    cols = cols or list(rows[0].keys())
+    w = {c: max(len(c), *(len(fmt(r.get(c))) for r in rows)) for c in cols}
+    print("  ".join(c.ljust(w[c]) for c in cols))
+    for r in rows:
+        print("  ".join(fmt(r.get(c)).ljust(w[c]) for c in cols))
+
+
+def fmt(v):
+    if v is None:
+        return "–"
+    if isinstance(v, float):
+        return f"{v:g}"
+    return str(v)
+
+
+# ---------------------------------------------------------------- argumentos
+def opts(args, flags=(), bools=()):
+    """Separa posicionais de --flag valor / --bool."""
+    pos, o = [], {}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--") and a[2:] in bools:
+            o[a[2:]] = True
+        elif a.startswith("--") and a[2:] in flags:
+            if i + 1 >= len(args):
+                sys.exit(f"erro: {a} precisa de valor")
+            o[a[2:]] = args[i + 1]
+            i += 1
+        elif a.startswith("--"):
+            sys.exit(f"erro: opção desconhecida {a}")
+        else:
+            pos.append(a)
+        i += 1
+    return pos, o
+
+
+def today():
+    return dt.datetime.now(TZ).date()
+
+
+def pdate(s):
+    if s is None or s in ("hoje", "today"):
+        return today().isoformat()
+    if s in ("ontem", "yesterday"):
+        return (today() - dt.timedelta(days=1)).isoformat()
+    if s in ("amanha", "amanhã", "tomorrow"):
+        return (today() + dt.timedelta(days=1)).isoformat()
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{4}))?", s)
+    if m:
+        y = int(m.group(3) or today().year)
+        return dt.date(y, int(m.group(2)), int(m.group(1))).isoformat()
+    try:
+        return dt.date.fromisoformat(s).isoformat()
+    except ValueError:
+        sys.exit(f"erro: data inválida '{s}' (use AAAA-MM-DD, dd/mm, hoje, ontem, amanha)")
+
+
+def ptime(s):
+    m = re.fullmatch(r"(\d{1,2})(?::|h)?(\d{2})?", s or "")
+    if not m:
+        sys.exit(f"erro: hora inválida '{s}' (use HH:MM)")
+    return f"{int(m.group(1)):02d}:{int(m.group(2) or 0):02d}"
+
+
+def pnum(s, what="número"):
+    try:
+        return float(str(s).replace(",", "."))
+    except ValueError:
+        sys.exit(f"erro: {what} inválido '{s}'")
+
+
+def note(kind, text, ref_table=None, ref_id=None):
+    bot(f"insert into bot_notes (kind, text, ref_table, ref_id, source) values ({lit(kind)}, {lit(text)}, "
+        f"{lit(ref_table)}, {lit(ref_id)}::uuid, 'bot')")
+
+
+# ---------------------------------------------------------------- leitura
+def cmd_today(a):
+    table(bot("select to_char(start_time,'HH24:MI') as hora, title, modality_label as modalidade, plan_kind as tipo, "
+              "coalesce(session_status, case when active then 'pendente' else 'pulado' end) as status, "
+              "exercise_count as exs, motivo from v_today order by start_time"))
+
+
+def cmd_week(a):
+    _, o = opts(a, bools=("next",))
+    if o.get("next"):
+        rows = bot("select date, to_char(start_time,'HH24:MI') as hora, title, plan_kind as tipo, "
+                   "case when active then coalesce(session_status,'') else 'pulado' end as status, motivo "
+                   "from plan_with_sessions(week_start(today_sp()) + 7, week_start(today_sp()) + 13) order by date, start_time")
+    else:
+        rows = bot("select date, to_char(start_time,'HH24:MI') as hora, title, plan_kind as tipo, "
+                   "case when active then coalesce(session_status,'') else 'pulado' end as status, motivo "
+                   "from v_week order by date, start_time")
+    table(rows)
+
+
+def cmd_evo(a):
+    print("# recomposição (v_recomposition)")
+    show(bot("select weight_now_kg, weight_delta_kg, weight_pace_pct_week, weight_arrow, waist_now_cm, waist_delta_cm, "
+             "waist_arrow, strength_delta_pct, strength_n_exercises, strength_arrow, reading, reading_text from v_recomposition"))
+    print("# peso (últimos 14 dias com pesagem)")
+    table(bot("select date, peso_kg, avg_7d, n_7d, delta_7d, pace_pct_week, above_cap from v_weight_trend order by date desc limit 14"))
+    print("# PRs (últimos 14 dias)")
+    table(bot("select date, exercise_name, kg, reps, e1rm, is_load_pr, is_e1rm_pr from v_prs "
+              "where is_pr and date >= today_sp() - 14 order by date desc, logged_at desc limit 20"))
+    print("# aderência (v_streaks)")
+    table(bot("select modality, this_week_done || '/' || this_week_planned as semana, current_streak_weeks as streak, "
+              "best_streak_weeks as melhor from v_streaks order by modality"))
+
+
+def cmd_summary(a):
+    pos, o = opts(a, flags=("n",))
+    unit = (pos[0] if pos else "week")
+    n = int(o.get("n", 2))
+    view = "v_monthly_summary" if unit.startswith("m") else "v_weekly_summary"
+    show(bot(f"select * from {view} order by period_start desc limit {n}"))
+
+
+def cmd_day(a):
+    d = pdate(a[0] if a else None)
+    table(bot(f"select left(id::text, 8) as id, meal as refeicao, description as item, grams as g, portion_label as medida, "
+              f"round(kcal) as kcal, round(protein_g,1) as p, round(carb_g,1) as c, round(fat_g,1) as g_, estimated as est "
+              f"from food_logs where date = {lit(d)} order by logged_at"))
+    totals(d)
+
+
+def totals(d):
+    r = bot(f"select coalesce(n.kcal,0) as kcal, coalesce(n.protein_g,0) as p, coalesce(n.carb_g,0) as c, coalesce(n.fat_g,0) as g, "
+            f"coalesce(n.creatine,false) as creatina, t.kcal_target, t.protein_min_g, t.protein_max_g, t.carb_target_g, t.fat_min_g, t.fat_max_g "
+            f"from v_nutrition_targets t left join v_daily_nutrition n on n.date = {lit(d)}")
+    if not r:
+        return
+    r = {k: (float(v) if isinstance(v, str) and re.fullmatch(r"-?[\d.]+", v) else v) for k, v in r[0].items()}
+    def falta(have, target):
+        return f" (faltam {max(0, round(target - have))})" if target else ""
+    print(f"total {d}: {round(r['kcal'])} kcal{' / ' + str(r['kcal_target']) if r['kcal_target'] else ''}{falta(r['kcal'], r['kcal_target'])} · "
+          f"proteína {round(r['p'])} g / {r['protein_min_g']}–{r['protein_max_g']}{falta(r['p'], r['protein_min_g'])} · "
+          f"carbo {round(r['c'])} g · gordura {round(r['g'])} g · creatina {'ok' if r['creatina'] else 'não'}")
+
+
+def cmd_food(a):
+    pos, o = opts(a, flags=("limit",))
+    if not pos:
+        sys.exit("uso: fit food <busca>")
+    q = " ".join(pos)
+    table(bot(f"select code, name, kcal, protein_g as p, carb_g as c, fat_g as g, portions from food_search({lit(q)}, {int(o.get('limit', 8))})"))
+
+
+def cmd_notes(a):
+    _, o = opts(a, flags=("limit",))
+    table(bot(f"select to_char(created_at at time zone 'America/Sao_Paulo', 'DD/MM HH24:MI') as quando, kind, text "
+              f"from bot_notes order by created_at desc limit {int(o.get('limit', 10))}"))
+
+
+def cmd_sessions(a):
+    _, o = opts(a, flags=("limit",))
+    table(bot(f"select left(id::text,8) as id, date, title, status, n_sets as series, round(volume_kg) as volume, n_prs as prs, source "
+              f"from v_sessions order by date desc, started_at desc nulls last limit {int(o.get('limit', 10))}"))
+
+
+# ---------------------------------------------------------------- treino
+def plan_item(d, time=None, title=None, only_pending=False):
+    rows = bot(f"select to_char(start_time,'HH24:MI') as hora, * from plan_with_sessions({lit(d)}, {lit(d)}) where active order by start_time")
+    if time:
+        rows = [r for r in rows if r["hora"] == time]
+    if title:
+        t = title.lower()
+        rows = [r for r in rows if t in r["title"].lower() or t in (r["modality"] or "")]
+    if only_pending:
+        pend = [r for r in rows if not r["session_status"]]
+        rows = pend or rows
+    return rows
+
+
+def cmd_session(a):
+    pos, o = opts(a, flags=("date", "time", "title", "note"))
+    if not pos or pos[0] not in ("feito", "faltou", "parcial", "fiz", "faltei"):
+        sys.exit("uso: fit session feito|faltou|parcial [--date d] [--time HH:MM | --title t] [--note t]")
+    status = {"fiz": "feito", "faltei": "faltou"}.get(pos[0], pos[0])
+    d = pdate(o.get("date"))
+    rows = plan_item(d, ptime(o["time"]) if "time" in o else None, o.get("title"), only_pending=True)
+    if not rows:
+        sys.exit(f"erro: nada planejado em {d} com esse filtro (use fit add para algo fora da grade)")
+    if len(rows) > 1 and "time" not in o and "title" not in o:
+        pend = [r for r in rows if not r["session_status"]]
+        if len(pend) != 1:
+            table(rows, ["hora", "title", "session_status"])
+            sys.exit("erro: mais de uma atividade; use --time ou --title")
+        rows = pend
+    r = rows[0]
+    if r["session_id"]:
+        out = bot(f"update sessions set status = {lit(status)}, note = coalesce({lit(o.get('note'))}, note), source = 'bot' "
+                  f"where id = {lit(r['session_id'])} returning id, date, status")
+    else:
+        out = bot(f"insert into sessions (date, modality, template_id, slot_id, override_id, status, note, source) values ("
+                  f"{lit(d)}, {lit(r['modality'])}, {lit(r['template_id'])}::uuid, {lit(r['slot_id'])}::uuid, {lit(r['override_id'])}::uuid, "
+                  f"{lit(status)}, {lit(o.get('note'))}, 'bot') returning id, date, status")
+    print(f"{r['hora']} {r['title']}: {status}")
+    show(out)
+
+
+def exercise(slug):
+    r = bot(f"select id, name from exercises where slug = {lit(slug)}")
+    if not r:
+        cands = bot(f"select slug, name from exercises where slug ilike {lit('%' + slug + '%')} or name ilike {lit('%' + slug + '%')} order by name")
+        if cands:
+            table(cands)
+        sys.exit(f"erro: exercício '{slug}' não encontrado (use o slug)")
+    return r[0]
+
+
+def cmd_log_set(a):
+    pos, o = opts(a, flags=("set", "date", "rir", "session"), bools=("warmup",))
+    if len(pos) != 3:
+        sys.exit("uso: fit log-set <exercicio_slug> <kg> <reps> [--set n] [--date d] [--rir r] [--warmup] [--session id]")
+    ex = exercise(pos[0])
+    kg, reps = pnum(pos[1], "kg"), int(pnum(pos[2], "reps"))
+    d = pdate(o.get("date"))
+    sid = o.get("session")
+    if not sid:
+        # sessão do dia cuja ficha contém o exercício (ou que já tem séries dele)
+        s = bot(f"select s.id from sessions s where s.date = {lit(d)} and s.status <> 'faltou' and ("
+                f"exists (select 1 from template_exercises te where te.template_id = s.template_id and te.exercise_id = {lit(ex['id'])}) "
+                f"or exists (select 1 from set_logs sl where sl.session_id = s.id and sl.exercise_id = {lit(ex['id'])})) "
+                f"order by s.created_at desc limit 1")
+        if s:
+            sid = s[0]["id"]
+        else:
+            tpl = bot(f"select p.template_id, p.slot_id, p.override_id from plan_with_sessions({lit(d)}, {lit(d)}) p "
+                      f"join template_exercises te on te.template_id = p.template_id and te.exercise_id = {lit(ex['id'])} "
+                      f"where p.active limit 1")
+            if not tpl:
+                tpl = bot(f"select te.template_id, null as slot_id, null as override_id from template_exercises te "
+                          f"where te.exercise_id = {lit(ex['id'])} limit 1")
+            t = tpl[0] if tpl else {"template_id": None, "slot_id": None, "override_id": None}
+            sid = bot(f"insert into sessions (date, modality, template_id, slot_id, override_id, status, source) values ("
+                      f"{lit(d)}, 'musculacao', {lit(t['template_id'])}::uuid, {lit(t['slot_id'])}::uuid, {lit(t['override_id'])}::uuid, "
+                      f"'feito', 'bot') returning id")[0]["id"]
+            print(f"sessão criada: {sid}")
+    n = o.get("set")
+    set_no = int(n) if n else f"(select coalesce(max(set_number), 0) + 1 from set_logs where session_id = {lit(sid)} and exercise_id = {lit(ex['id'])})"
+    out = bot(f"insert into set_logs (session_id, exercise_id, set_number, kg, reps, rir, warmup, source) values ("
+              f"{lit(sid)}, {lit(ex['id'])}, {set_no}, {kg}, {reps}, {lit(o.get('rir'))}::numeric, {str(bool(o.get('warmup'))).lower()}, 'bot') "
+              f"returning set_number, kg, reps")
+    print(f"{ex['name']}: série {out[0]['set_number']} = {kg:g} kg × {reps}")
+    pr = bot(f"select is_load_pr, is_e1rm_pr from v_prs where session_id = {lit(sid)} and exercise_id = {lit(ex['id'])} "
+             f"and set_number = {out[0]['set_number']}")
+    if pr and (pr[0]["is_load_pr"] or pr[0]["is_e1rm_pr"]):
+        print("PR! (" + ", ".join(k for k, v in (("carga", pr[0]["is_load_pr"]), ("1RM est.", pr[0]["is_e1rm_pr"])) if v) + ")")
+
+
+def cmd_carga(a):
+    pos, o = opts(a, flags=("template", "motivo"))
+    if len(pos) != 2:
+        sys.exit("uso: fit carga <exercicio_slug> <kg> [--template slug] [--motivo t]")
+    ex = exercise(pos[0])
+    kg = pnum(pos[1], "kg")
+    tf = f" and template_id = (select id from workout_templates where slug = {lit(o['template'])})" if "template" in o else ""
+    out = bot(f"update template_exercises set carga_alvo = {kg}, source = 'bot' where exercise_id = {lit(ex['id'])}{tf} "
+              f"returning (select slug from workout_templates w where w.id = template_id) as ficha, carga_alvo")
+    if not out:
+        sys.exit("erro: exercício não está em nenhuma ficha (com esse filtro)")
+    note("carga", f"{ex['name']}: carga-alvo {kg:g} kg" + (f". {o['motivo']}" if o.get("motivo") else "."), "template_exercises")
+    show(out)
+
+
+# ---------------------------------------------------------------- agenda
+def find_occurrence(d, t):
+    rows = bot(f"select * from plan_between({lit(d)}, {lit(d)}) where active and start_time = {lit(t)}::time")
+    if not rows:
+        sys.exit(f"erro: nada planejado em {d} às {t}")
+    return rows[0]
+
+
+def skip_occurrence(occ, motivo):
+    if occ["plan_kind"] == "adicionado":
+        bot(f"delete from schedule_overrides where id = {lit(occ['override_id'])}")
+    elif occ["plan_kind"] == "substituido":
+        bot(f"update schedule_overrides set action = 'skip', motivo = {lit(motivo)}, source = 'bot' where id = {lit(occ['override_id'])}")
+    else:
+        bot(f"insert into schedule_overrides (date, action, slot_id, motivo, source) values ({lit(occ['date'])}, 'skip', "
+            f"{lit(occ['slot_id'])}, {lit(motivo)}, 'bot')")
+
+
+def cmd_skip(a):
+    pos, o = opts(a, flags=("motivo",))
+    if len(pos) != 2:
+        sys.exit("uso: fit skip <data> <HH:MM> [--motivo t]")
+    d, t = pdate(pos[0]), ptime(pos[1])
+    occ = find_occurrence(d, t)
+    skip_occurrence(occ, o.get("motivo"))
+    note("remarcacao", f"{occ['title']} de {d} {t} pulado" + (f": {o['motivo']}" if o.get("motivo") else "."), "schedule_overrides")
+    print(f"pulado: {d} {t} {occ['title']}")
+
+
+def cmd_move(a):
+    pos, o = opts(a, flags=("to", "motivo"))
+    # fit move <data> <HH:MM> --to <data> <HH:MM>  (o --to consome só a data; a hora nova é o 3º posicional)
+    if len(pos) != 3 or "to" not in o:
+        sys.exit("uso: fit move <data> <HH:MM> --to <data> <HH:MM> [--motivo t]")
+    d, t = pdate(pos[0]), ptime(pos[1])
+    nd, nt = pdate(o["to"]), ptime(pos[2])
+    occ = find_occurrence(d, t)
+    motivo = o.get("motivo") or f"Remarcado de {d} {t}."
+    skip_occurrence(occ, f"Remarcado para {nd} {nt}." + (f" {o['motivo']}" if o.get("motivo") else ""))
+    bot(f"insert into schedule_overrides (date, action, start_time, duration_min, modality, template_id, title, motivo, source) values ("
+        f"{lit(nd)}, 'add', {lit(nt)}::time, {occ['duration_min']}, {lit(occ['modality'])}, {lit(occ['template_id'])}::uuid, "
+        f"{lit(occ['title'])}, {lit(motivo)}, 'bot')")
+    note("remarcacao", f"{occ['title']}: {d} {t} → {nd} {nt}" + (f". {o['motivo']}" if o.get("motivo") else "."), "schedule_overrides")
+    print(f"remarcado: {occ['title']} {d} {t} → {nd} {nt}")
+
+
+def cmd_add(a):
+    pos, o = opts(a, flags=("template", "title", "dur", "motivo"))
+    if len(pos) != 3 or pos[2] not in MODALITIES:
+        sys.exit(f"uso: fit add <data> <HH:MM> <{'|'.join(MODALITIES)}> [--template slug] [--title t] [--dur min] [--motivo t]")
+    d, t, m = pdate(pos[0]), ptime(pos[1]), pos[2]
+    tpl = f"(select id from workout_templates where slug = {lit(o['template'])})" if "template" in o else "null"
+    out = bot(f"insert into schedule_overrides (date, action, start_time, duration_min, modality, template_id, title, motivo, source) values ("
+              f"{lit(d)}, 'add', {lit(t)}::time, {int(o.get('dur', 60))}, {lit(m)}, {tpl}, {lit(o.get('title'))}, {lit(o.get('motivo'))}, 'bot') "
+              f"returning id, date, start_time, title")
+    note("remarcacao", f"Adicionado {o.get('title') or m} em {d} {t}" + (f": {o['motivo']}" if o.get("motivo") else "."), "schedule_overrides")
+    show(out)
+
+
+# ---------------------------------------------------------------- corpo
+BODY_FIELDS = {"cintura": "cintura_cm", "abdomen": "abdomen_cm", "quadril": "quadril_cm", "peito": "peito_cm",
+               "braco": "braco_cm", "coxa": "coxa_cm", "gordura": "gordura_pct"}
+
+
+def cmd_body(a):
+    pos, o = opts(a, flags=tuple(BODY_FIELDS) + ("date", "nota"))
+    vals = {}
+    if pos:
+        vals["peso_kg"] = pnum(pos[0], "peso")
+    if len(pos) > 1:
+        vals["cintura_cm"] = pnum(pos[1], "cintura")
+    for k, col in BODY_FIELDS.items():
+        if k in o:
+            vals[col] = pnum(o[k], k)
+    if not vals and "nota" not in o:
+        sys.exit("uso: fit body [peso] [--cintura x] [--abdomen x] ... [--date d] [--nota t]")
+    d = pdate(o.get("date"))
+    cols = list(vals) + (["nota"] if "nota" in o else [])
+    v = [str(vals[c]) for c in vals] + ([lit(o["nota"])] if "nota" in o else [])
+    upd = ", ".join(f"{c} = excluded.{c}" for c in cols)
+    out = bot(f"insert into body_metrics (date, {', '.join(cols)}, source) values ({lit(d)}, {', '.join(v)}, 'bot') "
+              f"on conflict (date) do update set {upd}, source = 'bot' "
+              f"returning date, peso_kg, cintura_cm, abdomen_cm, quadril_cm, peito_cm, braco_cm, coxa_cm, gordura_pct")
+    table(out)
+    if "peso_kg" in vals:
+        t = bot(f"select avg_7d, n_7d, delta_7d from v_weight_trend where date = {lit(d)}")
+        if t:
+            print(f"média 7d: {t[0]['avg_7d']} kg ({t[0]['n_7d']} pesagens)" + (f", Δ7d {t[0]['delta_7d']}" if t[0]['delta_7d'] is not None else ""))
+
+
+def service_key():
+    k = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not k and os.path.exists(KEYS_FILE):
+        for line in open(KEYS_FILE):
+            if line.startswith("SUPABASE_SERVICE_ROLE_KEY="):
+                k = line.split("=", 1)[1].strip().strip('"')
+    if not k:
+        sys.exit("erro: SUPABASE_SERVICE_ROLE_KEY ausente (necessária só para subir fotos no Storage)")
+    return k
+
+
+def upload(path, data):
+    url = f"https://{REF}.supabase.co/storage/v1/object/progress/{urllib.parse.quote(path)}"
+    key = service_key()
+    req = urllib.request.Request(url, data=data, method="POST", headers={
+        "Authorization": "Bearer " + key, "apikey": key, "Content-Type": "image/jpeg", "x-upsert": "true",
+        "Cache-Control": "private, max-age=600"})
+    try:
+        urllib.request.urlopen(req, timeout=120).read()
+    except urllib.error.HTTPError as e:
+        sys.exit(f"erro {e.code} ao subir {path}: {e.read()[:200]!r}")
+
+
+def cmd_photo(a):
+    pos, o = opts(a, flags=("pose", "date", "nota"))
+    if len(pos) != 1 or o.get("pose") not in ("frente", "lado", "costas"):
+        sys.exit("uso: fit photo <arquivo> --pose frente|lado|costas [--date d] [--nota t]")
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        sys.exit("erro: Pillow não instalado (pip install pillow)")
+    import io, uuid
+    d = pdate(o.get("date"))
+    with Image.open(pos[0]) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")   # aplica a rotação e descarta o EXIF (GPS, aparelho)
+        full = im.copy()
+        full.thumbnail((1600, 1600))
+        thumb = im.copy()
+        thumb.thumbnail((400, 400))
+    def jpeg(img, q):
+        b = io.BytesIO()
+        img.save(b, "JPEG", quality=q, optimize=True, progressive=True)   # sem exif=
+        return b.getvalue()
+    stem = f"{d[:7]}/{d}-{o['pose']}-{uuid.uuid4().hex[:8]}"
+    upload(f"{stem}.jpg", jpeg(full, 82))
+    upload(f"{stem}-thumb.jpg", jpeg(thumb, 78))
+    out = bot(f"insert into progress_photos (date, pose, path, thumb_path, nota, source) values ({lit(d)}, {lit(o['pose'])}, "
+              f"{lit(stem + '.jpg')}, {lit(stem + '-thumb.jpg')}, {lit(o.get('nota'))}, 'bot') returning id, date, pose, path")
+    show(out)
+
+
+# ---------------------------------------------------------------- nutrição
+def resolve_food(ref):
+    if ref.startswith(("taco:", "custom:")):
+        r = bot(f"select id, code, name, kcal, protein_g, carb_g, fat_g from foods where code = {lit(ref)}")
+        if not r:
+            sys.exit(f"erro: alimento {ref} não existe")
+        return r[0]
+    r = bot(f"select f.id, f.code, f.name, f.kcal, f.protein_g, f.carb_g, f.fat_g from food_search({lit(ref)}, 5) s join foods f on f.code = s.code")
+    if not r:
+        sys.exit(f"erro: nada encontrado para '{ref}' (veja fit food)")
+    exact = [x for x in r if x["name"].lower() == ref.lower()]
+    if exact:
+        return exact[0]
+    words = norm(ref).split()
+    full = [x for x in r if all(w in norm(x["name"]) for w in words)]
+    if len(full) == 1:
+        return full[0]
+    table(r, ["code", "name", "kcal"])
+    sys.exit(f"erro: '{ref}' é ambíguo; use o código")
+
+
+def norm(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+
+
+def parse_item(item):
+    if item.startswith("desc="):
+        kv = dict(p.split("=", 1) for p in item.split(";") if "=" in p)
+        return {"free": True, "desc": kv["desc"], "grams": pnum(kv["g"]) if "g" in kv else None,
+                "kcal": pnum(kv.get("kcal", 0)), "p": pnum(kv.get("p", 0)), "c": pnum(kv.get("c", 0)), "f": pnum(kv.get("f", 0))}
+    if "=" not in item:
+        sys.exit(f"erro: item '{item}' sem quantidade (use alimento=150g)")
+    ref, qty = item.rsplit("=", 1)
+    food = resolve_food(ref.strip())
+    qty = qty.strip()
+    m = re.fullmatch(r"([\d.,]+)\s*g", qty)
+    if m:
+        grams, label, n = pnum(m.group(1)), None, None
+    else:
+        m = re.fullmatch(r"([\d.,]+)?\s*(?:x\s*)?(.+)", qty)
+        n = pnum(m.group(1)) if m.group(1) else 1.0
+        label = m.group(2).strip()
+        p = bot(f"select label, grams from food_portions where food_id = {lit(food['id'])} and label ilike {lit(label)}")
+        if not p:
+            p = bot(f"select label, grams from food_portions where food_id = {lit(food['id'])} and label ilike {lit('%' + label + '%')}")
+        if len(p) != 1:
+            opts_ = bot(f"select label, grams from food_portions where food_id = {lit(food['id'])} order by label")
+            table(opts_)
+            sys.exit(f"erro: medida '{label}' não encontrada para {food['name']} (use gramas ou fit portion)")
+        label = p[0]["label"]
+        grams = round(n * float(p[0]["grams"]), 1)
+    f = grams / 100
+    def mac(k):
+        return round(float(food[k] or 0) * f, 2)
+    return {"free": False, "food": food, "grams": grams, "label": label, "n": n,
+            "kcal": mac("kcal"), "p": mac("protein_g"), "c": mac("carb_g"), "f": mac("fat_g")}
+
+
+def cmd_meal(a):
+    pos, o = opts(a, flags=("date", "note"), bools=("estimated",))
+    if len(pos) < 2:
+        sys.exit('uso: fit meal <refeicao> "<codigo|nome>=<qtd>" [...] [--date d] [--estimated] [--note t]')
+    meal, d = pos[0], pdate(o.get("date"))
+    items = [parse_item(x) for x in pos[1:]]
+    est = "true" if o.get("estimated") else "false"
+    vals = []
+    for it in items:
+        if it["free"]:
+            vals.append(f"({lit(d)}, {lit(meal)}, null, {lit(it['desc'])}, {lit(it['grams'])}::numeric, null, null, "
+                        f"{it['kcal']}, {it['p']}, {it['c']}, {it['f']}, {est}, {lit(o.get('note'))}, 'bot')")
+        else:
+            desc = it["food"]["name"]
+            vals.append(f"({lit(d)}, {lit(meal)}, {lit(it['food']['id'])}::uuid, {lit(desc)}, {it['grams']}, {lit(it['label'])}, "
+                        f"{lit(it['n'] if it['label'] else None)}::numeric, {it['kcal']}, {it['p']}, {it['c']}, {it['f']}, {est}, {lit(o.get('note'))}, 'bot')")
+    out = bot("insert into food_logs (date, meal, food_id, description, grams, portion_label, portion_qty, kcal, protein_g, carb_g, fat_g, "
+              "estimated, note, source) values " + ", ".join(vals) + " returning left(id::text, 8) as id, description, grams, round(kcal) as kcal, round(protein_g,1) as p")
+    table(out)
+    totals(d)
+
+
+def cmd_meal_del(a):
+    if len(a) != 1:
+        sys.exit("uso: fit meal-del <id (8+ caracteres)>")
+    out = bot(f"delete from food_logs where id::text like {lit(a[0] + '%')} returning description, date")
+    if len(out) != 1:
+        sys.exit(f"erro: {len(out)} itens apagados (use um id mais longo)" if out else "erro: id não encontrado")
+    show(out)
+
+
+def cmd_food_add(a):
+    pos, o = opts(a, flags=("fiber", "portion"))
+    if len(pos) != 6:
+        sys.exit('uso: fit food-add <slug> "<nome>" <kcal> <prot> <carb> <gord> [--fiber x] [--portion "1 un=350"]')
+    slug, name = pos[0], pos[1]
+    k, p, c, g = (pnum(x) for x in pos[2:6])
+    out = bot(f"insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, source) values ("
+              f"{lit('custom:' + slug)}, {lit(name)}, 'Custom', true, {k}, {p}, {c}, {g}, {lit(o.get('fiber'))}::numeric, 'bot') "
+              f"on conflict (code) do update set name = excluded.name, kcal = excluded.kcal, protein_g = excluded.protein_g, "
+              f"carb_g = excluded.carb_g, fat_g = excluded.fat_g, fiber_g = excluded.fiber_g, source = 'bot' returning code, name")
+    show(out)
+    if "portion" in o:
+        label, grams = o["portion"].rsplit("=", 1)
+        cmd_portion([f"custom:{slug}", label.strip(), grams.strip()])
+
+
+def cmd_portion(a):
+    if len(a) != 3:
+        sys.exit('uso: fit portion <codigo> "<medida>" <gramas>')
+    out = bot(f"insert into food_portions (food_id, label, grams, source) select id, {lit(a[1])}, {pnum(a[2])}, 'bot' from foods "
+              f"where code = {lit(a[0])} on conflict (food_id, label) do update set grams = excluded.grams, source = 'bot' returning label, grams")
+    if not out:
+        sys.exit(f"erro: alimento {a[0]} não existe")
+    show(out)
+
+
+def cmd_creatine(a):
+    pos, o = opts(a, flags=("g", "date"))
+    v = (pos[0] if pos else "sim").lower() not in ("nao", "não", "no", "off", "false")
+    d = pdate(o.get("date"))
+    g = pnum(o["g"]) if "g" in o else None
+    show(bot(f"insert into daily_checks (date, creatine, creatine_g, source) values ({lit(d)}, {str(v).lower()}, {lit(g)}::numeric, 'bot') "
+             f"on conflict (date) do update set creatine = excluded.creatine, creatine_g = coalesce(excluded.creatine_g, daily_checks.creatine_g), "
+             f"source = 'bot' returning date, creatine, creatine_g"))
+
+
+def cmd_water(a):
+    pos, o = opts(a, flags=("date",))
+    if len(pos) != 1:
+        sys.exit("uso: fit water <ml> [--date d]")
+    d = pdate(o.get("date"))
+    show(bot(f"insert into daily_checks (date, water_ml, source) values ({lit(d)}, {int(pnum(pos[0]))}, 'bot') "
+             f"on conflict (date) do update set water_ml = excluded.water_ml, source = 'bot' returning date, water_ml"))
+
+
+def cmd_note(a):
+    if len(a) != 2 or a[0] not in NOTE_KINDS:
+        sys.exit(f'uso: fit note <{"|".join(NOTE_KINDS)}> "<texto>"')
+    note(a[0], a[1])
+    print("ok")
+
+
+COMMANDS = {
+    "today": cmd_today, "week": cmd_week, "evo": cmd_evo, "summary": cmd_summary, "day": cmd_day, "food": cmd_food,
+    "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga,
+    "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
+    "meal-del": cmd_meal_del, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
+    "water": cmd_water, "note": cmd_note,
+}
+
+
+def main(a):
+    if not a or a[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return
+    c, rest = a[0], a[1:]
+    if c == "sql" and len(rest) == 1:
+        show(bot(rest[0]))
+    elif c == "admin-sql" and len(rest) == 1:
+        show(run(rest[0]))
+    elif c in COMMANDS:
+        COMMANDS[c](rest)
+    else:
+        print(__doc__)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

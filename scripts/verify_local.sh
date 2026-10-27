@@ -13,7 +13,7 @@ DATA="$BASE/data"
 stop_cluster() { "$PGBIN/pg_ctl" -D "$DATA" -m fast stop >/dev/null 2>&1 || true; }
 stop_cluster
 rm -rf "$BASE"; mkdir -p "$BASE"
-trap 'stop_cluster' EXIT
+[[ -n "${KEEP:-}" ]] || trap 'stop_cluster' EXIT
 
 "$PGBIN/initdb" -U postgres --auth-local=trust --auth-host=scram-sha-256 -D "$DATA" >/dev/null
 # superuser só por socket (trust); TCP exige senha (testa o login real do bot)
@@ -84,7 +84,7 @@ psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/dev_syn
 
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
-       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions)
+       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"
@@ -103,6 +103,10 @@ expect_eq "prev_sets não devolve a sessão excluída" bot - \
   "with s as (select session_id from set_logs order by logged_at desc limit 1) select count(*) from s, prev_sets(s.session_id) p where p.session_id = s.session_id" 0
 expect_eq "v_sessions: volume = soma das séries" bot - \
   "select count(*) from v_sessions v where v.volume_kg <> (select coalesce(sum(coalesce(kg,0)*coalesce(reps,0)),0) from set_logs sl where sl.session_id = v.id and not sl.warmup)" 0
+expect_eq "TACO: 597 alimentos"             bot - "select count(*) from foods where code like 'taco:%'" 597
+expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
+expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"
+expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
 expect_ok "Epley em v_e1rm confere"         bot - "select 1/(count(*) = 0)::int from v_e1rm where e1rm <> round(kg * (1 + reps / 30.0), 2) or reps > 12"
 expect_ok "há PRs com flag"                 bot - "select 1/(count(*) > 0)::int from v_prs where is_pr"
