@@ -45,7 +45,7 @@ se a conexão direta (IPv6) não funcionar no box.
 |---|---|
 | `scripts/apply_migrations.sh [--no-seed]` | aplica as migrations novas em ordem (registro em `public._migrations` com checksum) e o seed (idempotente) |
 | `scripts/create_bot_role_password.sh` | senha aleatória (`openssl rand`), `ALTER ROLE bot LOGIN PASSWORD`, grava a URL do bot em `/home/box/.secrets/fitness_bot_db_url` (600). No pooler o usuário vira `bot.<project_ref>`. Rodar de novo = rotacionar a senha |
-| `scripts/create_login_user.sh <email>` | cria o usuário pela Admin API (`SUPABASE_SERVICE_ROLE_KEY` ou `/home/box/.secrets/fitness_service_role_key`), grava a senha temporária em `/home/box/.secrets/fitness_login_temp_password` (600) e chama `set_owner.sh` |
+| `scripts/create_login_user.sh [email]` (padrão kaluanbernardo@gmail.com) | cria o usuário pela Admin API (`SUPABASE_SERVICE_ROLE_KEY` ou `/home/box/.secrets/fitness_service_role_key`), grava a senha temporária em `/home/box/.secrets/fitness_login_password` (600) e chama `set_owner.sh` |
 | `scripts/set_owner.sh <uuid>` | grava o UUID do dono em `app_config` |
 | `scripts/backup_nightly.sh` | `pg_dump -Fc` do schema `public` em `/home/box/backups/fitness/`, retenção de 30 dias (`BACKUP_SCHEMAS="public auth"` para incluir mais) |
 | `scripts/keepalive.sh` | `select 1` com a URL do bot; se falhar, ping REST com a anon key; log em `/home/box/backups/fitness/keepalive.log` |

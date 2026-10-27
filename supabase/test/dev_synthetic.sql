@@ -10,6 +10,9 @@ do $$ begin
   end if;
 end $$;
 
+-- os sintéticos substituem o peso real do seed (cenário controlado)
+delete from public.body_metrics;
+
 -- corpo: pesagem em 6 de 7 dias; cintura semanal (a última é ontem)
 insert into public.body_metrics (date, peso_kg, cintura_cm, braco_cm, nota)
 select public.today_sp() - 56 + i,

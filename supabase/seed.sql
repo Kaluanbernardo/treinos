@@ -6,8 +6,8 @@ begin;
 -- ---------------------------------------------------------------- metas
 insert into public.goals (singleton, deficit_kcal, protein_g_per_kg_min, protein_g_per_kg_max,
                           creatine_g_min, creatine_g_max, water_ml_per_kg_min, water_ml_per_kg_max,
-                          max_loss_pct_week, note)
-values (true, 300, 2.0, 2.2, 3, 5, 35, 40, 0.5,
+                          max_loss_pct_week, peso_ref_kg, note)
+values (true, 300, 2.0, 2.2, 3, 5, 35, 40, 0.5, 94,
         'kcal-alvo = TDEE − 300, calculado pelo assistente a partir do 1º peso. Recalcular a cada 2 semanas.')
 on conflict (singleton) do update set
   deficit_kcal = excluded.deficit_kcal,
@@ -17,7 +17,14 @@ on conflict (singleton) do update set
   creatine_g_max = excluded.creatine_g_max,
   water_ml_per_kg_min = excluded.water_ml_per_kg_min,
   water_ml_per_kg_max = excluded.water_ml_per_kg_max,
-  max_loss_pct_week = excluded.max_loss_pct_week;
+  max_loss_pct_week = excluded.max_loss_pct_week,
+  peso_ref_kg = excluded.peso_ref_kg;
+-- proteína: protein_g_min/max são colunas geradas (94 kg → 188–207 g)
+
+-- ---------------------------------------------------------------- 1º peso (dito no chat em 27/10/2026)
+insert into public.body_metrics (date, peso_kg, source)
+values ('2026-10-27', 94, 'bot')
+on conflict (date) do update set peso_kg = excluded.peso_kg, source = excluded.source;
 
 -- ---------------------------------------------------------------- exercícios
 insert into public.exercises (slug, name, muscle_group, main_lift, tips) values

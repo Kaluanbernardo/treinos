@@ -69,6 +69,9 @@ expect_eq "qua 28/10: inferiores A 6h, cross pulado" postgres - \
 expect_eq "seg 02/11 volta à grade base"   postgres - \
   "select string_agg(title, ',' order by start_time) from plan_between('2026-11-02','2026-11-02')" "Superior A,Muay thai"
 
+expect_eq "goals: peso_ref 94 → proteína 188–207 g" postgres - "select peso_ref_kg::int || ' ' || protein_g_min || '-' || protein_g_max from goals" "94 188-207"
+expect_eq "body_metrics 27/10: 94 kg (bot)" postgres - "select peso_kg::int || ' ' || source from body_metrics where date = '2026-10-27'" "94 bot"
+
 echo "== dono / RLS (antes de definir owner)"
 OWNER=11111111-1111-1111-1111-111111111111
 OTHER=22222222-2222-2222-2222-222222222222

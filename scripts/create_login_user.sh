@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Cria o usuário de login (e-mail + senha temporária) pela Admin API do Supabase Auth e
 # registra o UUID como dono (app_config.owner_uuid).
-#   Uso: SUPABASE_SERVICE_ROLE_KEY=... scripts/create_login_user.sh <email>
+#   Uso: SUPABASE_SERVICE_ROLE_KEY=... scripts/create_login_user.sh [email]  (padrão: kaluanbernardo@gmail.com)
 #   (a chave também pode vir de $SECRETS_DIR/fitness_service_role_key)
-# Senha temporária → $SECRETS_DIR/fitness_login_temp_password (chmod 600). Troque no 1º uso.
+# Senha temporária → $SECRETS_DIR/fitness_login_password (chmod 600). Troque no 1º uso.
 # Fallback sem service role key: crie o usuário no Dashboard (Authentication > Users > Add user,
 # "Auto Confirm User") e rode scripts/set_owner.sh <uuid>.
 set -euo pipefail
+umask 077
 source "$(dirname "$0")/lib.sh"
-email="${1:-}"
-[[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "uso: $0 <email>"
+email="${1:-kaluanbernardo@gmail.com}"
+[[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "uso: $0 [email]"
 
 key="${SUPABASE_SERVICE_ROLE_KEY:-}"
 if [[ -z "$key" && -r "$SECRETS_DIR/fitness_service_role_key" ]]; then
@@ -34,7 +35,7 @@ if [[ "$code" != 200 && "$code" != 201 ]]; then
 fi
 uuid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$tmp/resp")"
 
-printf '%s\n' "$pw" | write_secret "$SECRETS_DIR/fitness_login_temp_password"
+printf '%s\n' "$pw" | write_secret "$SECRETS_DIR/fitness_login_password"
 unset pw key
-echo "usuário criado: $uuid (senha temporária em $SECRETS_DIR/fitness_login_temp_password)"
+echo "usuário criado: $uuid (senha temporária em $SECRETS_DIR/fitness_login_password)"
 "$(dirname "$0")/set_owner.sh" "$uuid"
