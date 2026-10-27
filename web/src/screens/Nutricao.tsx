@@ -115,10 +115,8 @@ function Checks({ day, date, t }: { day: DailyNutrition; date: string; t: Nutrit
         <Droplets size={22} className="shrink-0 text-protein" aria-hidden="true" />
         <span className="min-w-0">
           <span className="block text-sm text-muted">Água</span>
-          <span className="block font-semibold tabular-nums">
-            {day.water_ml ? `${num(day.water_ml / 1000)} L` : 'pelo chat'}
-            {t?.water_min_ml ? <span className="font-normal text-muted"> / {num(t.water_min_ml / 1000)}–{num(t.water_max_ml! / 1000)} L</span> : null}
-          </span>
+          <span className="block font-semibold tabular-nums">{day.water_ml ? `${num(day.water_ml / 1000)} L` : 'sem registro'}</span>
+          {t?.water_min_ml ? <span className="block text-xs tabular-nums text-muted">meta {num(t.water_min_ml / 1000)}–{num(t.water_max_ml! / 1000)} L</span> : null}
         </span>
       </div>
     </div>
@@ -128,13 +126,13 @@ function Checks({ day, date, t }: { day: DailyNutrition; date: string; t: Nutrit
 export function CreatineButton({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button type="button" onClick={onToggle} aria-pressed={on}
-      className={`flex min-h-16 items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors duration-150 ${on ? 'bg-lime/15 ring-1 ring-lime/50' : 'bg-card hover:bg-card-2'}`}>
+      className={`flex min-h-16 w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors duration-150 ${on ? 'bg-lime/15 ring-1 ring-lime/50' : 'bg-card hover:bg-card-2'}`}>
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${on ? 'check-pop bg-lime text-bg' : 'border-2 border-line text-muted'}`} aria-hidden="true">
         {on ? <Check size={20} strokeWidth={3} /> : <Pill size={18} />}
       </span>
       <span className="min-w-0">
         <span className="block text-sm text-muted">Creatina</span>
-        <span className={`block font-semibold ${on ? 'text-lime' : ''}`}>{on ? 'tomada' : 'tocar quando tomar'}</span>
+        <span className={`block font-semibold ${on ? 'text-lime' : ''}`}>{on ? 'tomada' : 'marcar'}</span>
       </span>
     </button>
   )

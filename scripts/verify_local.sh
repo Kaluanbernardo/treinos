@@ -84,7 +84,7 @@ psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/dev_syn
 
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
-       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets)
+       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets v_muscle_volume_weekly)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"

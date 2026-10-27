@@ -230,13 +230,13 @@ function ForcaBlock({ period }: { period: Period }) {
   const cut = cutoffFor(period)
 
   const exercises = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; main: boolean; n: number; last: string }>()
+    const map = new Map<string, { id: string; name: string; main: boolean; n: number; last: string; loaded: boolean }>()
     for (const r of ex.data ?? []) {
-      const cur = map.get(r.exercise_id) ?? { id: r.exercise_id, name: r.exercise_name, main: r.main_lift, n: 0, last: r.date }
-      cur.n += 1; if (r.date > cur.last) cur.last = r.date
+      const cur = map.get(r.exercise_id) ?? { id: r.exercise_id, name: r.exercise_name, main: r.main_lift, n: 0, last: r.date, loaded: false }
+      cur.n += 1; if (r.top_e1rm != null) cur.loaded = true; if (r.date > cur.last) cur.last = r.date
       map.set(r.exercise_id, cur)
     }
-    return [...map.values()].sort((a, b) => Number(b.main) - Number(a.main) || b.n - a.n || a.name.localeCompare(b.name))
+    return [...map.values()].sort((a, b) => Number(b.loaded) - Number(a.loaded) || Number(b.main) - Number(a.main) || b.n - a.n || a.name.localeCompare(b.name))
   }, [ex.data])
 
   if (ex.isPending) return <Skeleton className="h-96" />
@@ -284,7 +284,9 @@ function ForcaBlock({ period }: { period: Period }) {
         Última sessão ({dm(last.date)}): melhor série <b className="text-fg tabular-nums">{last.top_kg ? `${kgFmt(last.top_kg)} kg × ${last.top_reps}` : '—'}</b> · {intFmt(last.volume_kg)} kg de volume
       </p>
 
-      {rows.length < 2 ? (
+      {!cur.loaded ? (
+        <p className="mt-4 text-[15px] leading-relaxed text-muted">Exercício com o peso do corpo: sem carga, não há 1RM estimado. A evolução aparece nas repetições do histórico de treinos.</p>
+      ) : rows.length < 2 ? (
         <div className="mt-4">
           <Collecting title="1 sessão registrada" progress={{ have: 1, need: 2, unit: 'sessões' }}>
             A curva aparece na próxima vez que você fizer {cur.name.toLowerCase()}.

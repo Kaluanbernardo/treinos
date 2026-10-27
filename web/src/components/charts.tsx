@@ -43,7 +43,7 @@ export function TrendChart({ data, color, unit, digits = 1, height = 200, dots =
     <figure aria-label={ariaLabel} className="-mx-1">
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={pts} margin={{ top: 22, right: 44, bottom: 0, left: -12 }}>
+          <ComposedChart data={pts} margin={{ top: 22, right: 44, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.15} />
@@ -54,7 +54,7 @@ export function TrendChart({ data, color, unit, digits = 1, height = 200, dots =
             <XAxis dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']} {...AXIS}
               tickFormatter={(t: number) => dm(fromTs(t))} minTickGap={28} padding={{ left: 8, right: 8 }}
               ticks={span ? undefined : [pts[0]?.t]} />
-            <YAxis domain={domain} {...AXIS} width={44} tickCount={4} tickFormatter={(v: number) => num(v, v % 1 ? 1 : 0)} />
+            <YAxis domain={domain} {...AXIS} width={40} tickCount={4} tickFormatter={(v: number) => num(v, v % 1 ? 1 : 0)} />
             {band && <ReferenceArea y1={band[0]} y2={band[1]} fill="var(--color-ok)" fillOpacity={0.08} stroke="none" ifOverflow="extendDomain" />}
             {refLine != null && <ReferenceLine y={refLine} stroke="var(--color-muted)" strokeDasharray="4 4" strokeOpacity={0.7} />}
             <Area type="monotone" dataKey={key} stroke="none" fill={`url(#${gid})`} connectNulls isAnimationActive={false} />
@@ -102,7 +102,7 @@ export function Bars({ data, color, unit, height = 150, ariaLabel, digits = 0, b
     <figure aria-label={ariaLabel} className="-mx-1">
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }} barCategoryGap="22%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="22%">
             <CartesianGrid vertical={false} stroke={GRID} />
             <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={12} />
             <YAxis {...AXIS} width={44} tickCount={4} tickFormatter={(v: number) => (v >= 10000 ? `${Math.round(v / 1000)}k` : num(v, 0))} />

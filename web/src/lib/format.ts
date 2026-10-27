@@ -51,8 +51,11 @@ export const kgFmt = (n: number | null | undefined) =>
 export const intFmt = (n: number | null | undefined) =>
   n == null ? '' : Math.round(Number(n)).toLocaleString('pt-BR')
 
-export const signed = (n: number | null | undefined, digits = 1) =>
-  n == null ? '' : `${n > 0 ? '+' : n < 0 ? '−' : '±'}${num(Math.abs(n), digits)}`
+export const signed = (n: number | null | undefined, digits = 1) => {
+  if (n == null) return ''
+  const r = Number(Number(n).toFixed(digits))
+  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${num(Math.abs(r), digits)}`
+}
 
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
