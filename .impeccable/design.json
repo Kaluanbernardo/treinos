@@ -1,0 +1,493 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T00:00:00Z",
+  "title": "Design System: Fitness Kaluan",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Pit Black",
+        "canonical": "#0E1116",
+        "tonalRamp": [
+          "#030304",
+          "#060709",
+          "#080A0D",
+          "#0B0E12",
+          "#0E1116",
+          "#56585C",
+          "#9FA0A2",
+          "#DBDBDC"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#171B22",
+        "tonalRamp": [
+          "#050507",
+          "#090B0E",
+          "#0E1014",
+          "#12161B",
+          "#171B22",
+          "#5D5F64",
+          "#A2A4A7",
+          "#DCDDDE"
+        ]
+      },
+      "card-2": {
+        "role": "neutral",
+        "displayName": "Raised Panel",
+        "canonical": "#1F2530",
+        "tonalRamp": [
+          "#06070A",
+          "#0C0F13",
+          "#13161D",
+          "#191E26",
+          "#1F2530",
+          "#62666E",
+          "#A5A8AC",
+          "#DDDEE0"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#2A3140",
+        "tonalRamp": [
+          "#080A0D",
+          "#11141A",
+          "#191D26",
+          "#222733",
+          "#2A3140",
+          "#6A6F79",
+          "#AAADB3",
+          "#DFE0E2"
+        ]
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Chalk",
+        "canonical": "#F2F4F7",
+        "tonalRamp": [
+          "#303131",
+          "#616263",
+          "#919294",
+          "#C2C3C6",
+          "#F2F4F7",
+          "#F6F7F9",
+          "#FAFBFC",
+          "#FDFDFE"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Slate",
+        "canonical": "#9AA4B2",
+        "tonalRamp": [
+          "#1F2124",
+          "#3E4247",
+          "#5C626B",
+          "#7B838E",
+          "#9AA4B2",
+          "#B8BFC9",
+          "#D7DBE0",
+          "#F0F1F3"
+        ]
+      },
+      "lime": {
+        "role": "primary",
+        "displayName": "Gym Lime",
+        "canonical": "#C6F432",
+        "tonalRamp": [
+          "#28310A",
+          "#4F6214",
+          "#77921E",
+          "#9EC328",
+          "#C6F432",
+          "#D7F770",
+          "#E8FBAD",
+          "#F6FDE0"
+        ]
+      },
+      "kcal": {
+        "role": "secondary",
+        "displayName": "Ember Orange",
+        "canonical": "#FF8A3D",
+        "tonalRamp": [
+          "#331C0C",
+          "#663718",
+          "#995325",
+          "#CC6E31",
+          "#FF8A3D",
+          "#FFAD77",
+          "#FFD0B1",
+          "#FFEDE2"
+        ]
+      },
+      "protein": {
+        "role": "secondary",
+        "displayName": "Sky Protein",
+        "canonical": "#38BDF8",
+        "tonalRamp": [
+          "#0B2632",
+          "#164C63",
+          "#227195",
+          "#2D97C6",
+          "#38BDF8",
+          "#74D1FA",
+          "#AFE5FC",
+          "#E1F5FE"
+        ]
+      },
+      "carb": {
+        "role": "secondary",
+        "displayName": "Carb Lime",
+        "canonical": "#C6F432",
+        "tonalRamp": [
+          "#28310A",
+          "#4F6214",
+          "#77921E",
+          "#9EC328",
+          "#C6F432",
+          "#D7F770",
+          "#E8FBAD",
+          "#F6FDE0"
+        ]
+      },
+      "fat": {
+        "role": "secondary",
+        "displayName": "Soft Violet",
+        "canonical": "#A78BFA",
+        "tonalRamp": [
+          "#211C32",
+          "#433864",
+          "#645396",
+          "#866FC8",
+          "#A78BFA",
+          "#C1AEFC",
+          "#DCD1FD",
+          "#F2EEFE"
+        ]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Mint OK",
+        "canonical": "#34D399",
+        "tonalRamp": [
+          "#0A2A1F",
+          "#15543D",
+          "#1F7F5C",
+          "#2AA97A",
+          "#34D399",
+          "#71E0B8",
+          "#AEEDD6",
+          "#E1F8F0"
+        ]
+      },
+      "warn": {
+        "role": "tertiary",
+        "displayName": "Amber Warn",
+        "canonical": "#FBBF24",
+        "tonalRamp": [
+          "#322607",
+          "#644C0E",
+          "#977316",
+          "#C9991D",
+          "#FBBF24",
+          "#FCD266",
+          "#FDE5A7",
+          "#FEF5DE"
+        ]
+      },
+      "err": {
+        "role": "tertiary",
+        "displayName": "Coral Error",
+        "canonical": "#F87171",
+        "tonalRamp": [
+          "#321717",
+          "#632D2D",
+          "#954444",
+          "#C65A5A",
+          "#F87171",
+          "#FA9C9C",
+          "#FCC6C6",
+          "#FEEAEA"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display-hero": {
+        "displayName": "Display Hero",
+        "purpose": "Single weight number on the Hoje Evolução card."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Evolução hero numbers and the session hero stat."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Agora / active-session title."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Rest timer, kcal remaining, summary hero stat."
+      },
+      "title-screen": {
+        "displayName": "Title Screen",
+        "purpose": "Screen h1 and stepper value."
+      },
+      "title-section": {
+        "displayName": "Title Section",
+        "purpose": "Section headings outside cards; sheet titles."
+      },
+      "title-card": {
+        "displayName": "Title Card",
+        "purpose": "Card h2."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Minimum running text."
+      },
+      "body-secondary": {
+        "displayName": "Body Secondary",
+        "purpose": "Readings, explanations, toasts."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Stat and triad labels, sub-lines, deltas."
+      },
+      "badge": {
+        "displayName": "Badge",
+        "purpose": "Badges, nav labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "toast-float",
+        "value": "0 8px 24px -8px rgb(0 0 0 / 0.6)",
+        "purpose": "Toasts only."
+      },
+      {
+        "name": "tooltip-float",
+        "value": "0 8px 20px -8px rgb(0 0 0 / 0.7)",
+        "purpose": "Chart tooltips only."
+      },
+      {
+        "name": "segment-lip",
+        "value": "inset 0 1px 0 0 var(--color-line)",
+        "purpose": "Selected segment in the segmented control."
+      },
+      {
+        "name": "focus",
+        "value": "outline: 2px solid var(--color-lime); outline-offset: 2px",
+        "purpose": "Global :focus-visible."
+      },
+      {
+        "name": "now-ring",
+        "value": "0 0 0 1px rgb(198 244 50 / 0.3–0.4)",
+        "purpose": "Card or row that is today / now / active."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The only easing for animations."
+      },
+      {
+        "name": "state",
+        "value": "150ms",
+        "purpose": "Colour, border, transform and press transitions."
+      },
+      {
+        "name": "grow",
+        "value": "500–600ms",
+        "purpose": "Ring arcs (600ms), chart lines and bars (500ms) on open."
+      },
+      {
+        "name": "check-pop",
+        "value": "320ms scale 0.6→1.15→1",
+        "purpose": "Confirmed set / toggle check, with a 15ms haptic."
+      },
+      {
+        "name": "pr-seal",
+        "value": "520ms scale+rotate",
+        "purpose": "PR stamp, with a double haptic pulse."
+      },
+      {
+        "name": "toast-in",
+        "value": "220ms translateY(12px)→0",
+        "purpose": "Toast entrance."
+      },
+      {
+        "name": "sheet-up",
+        "value": "260ms translateY(40px)→0",
+        "purpose": "Bottom sheet entrance."
+      },
+      {
+        "name": "shimmer",
+        "value": "1.4s infinite",
+        "purpose": "Skeleton loading."
+      },
+      {
+        "name": "live",
+        "value": "1.8s ease-in-out infinite",
+        "purpose": "'Agora' live dot."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all durations 0ms",
+        "purpose": "prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "column",
+        "value": "512px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button (xl)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The card's one main action, full width at the bottom of the card.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>Feito</button>",
+      "css": ".ds-btn-primary { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 64px; padding: 0 24px; width: 100%; border: 0; border-radius: 16px; background: var(--color-lime); color: var(--color-bg); font-size: 20px; font-weight: 600; cursor: pointer; transition: transform 150ms, filter 150ms; } .ds-btn-primary:hover { filter: brightness(1.05); } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-lime); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every non-primary action; pairs with primary as Feito / Faltei.",
+      "html": "<button class=\"ds-btn-secondary\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg>Faltei</button>",
+      "css": ".ds-btn-secondary { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 16px; border-radius: 12px; background: var(--color-card-2); color: var(--color-fg); border: 1px solid var(--color-line); font-size: 16px; cursor: pointer; transition: transform 150ms, border-color 150ms; } .ds-btn-secondary:hover { border-color: rgb(154 164 178 / 0.6); } .ds-btn-secondary:active { transform: scale(0.98); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-lime); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Base surface: 18px semibold heading, muted sub-line, one protagonist number.",
+      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-title\">Evolução</h2><p class=\"ds-card-num\">81,9<span>kg</span></p><p class=\"ds-card-sub\">média de 7 dias · ±0,0 kg na semana</p></section>",
+      "css": ".ds-card { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; background: var(--color-card); color: var(--color-fg); border-radius: 20px; padding: 20px; } .ds-card-title { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.25; } .ds-card-num { margin: 16px 0 0; font-size: 56px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; } .ds-card-num span { margin-left: 6px; font-size: 18px; font-weight: 400; letter-spacing: 0; color: var(--color-muted); } .ds-card-sub { margin: 8px 0 0; font-size: 15px; color: var(--color-muted); }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Status text on a 15% tint; may lead with the live dot.",
+      "html": "<span class=\"ds-badge ds-badge-lime\"><span class=\"ds-dot\"></span>agora</span> <span class=\"ds-badge ds-badge-warn\">exceção</span> <span class=\"ds-badge\">em 1 h 52 min</span>",
+      "css": ".ds-badge { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; line-height: 1; background: rgb(42 49 64 / 0.6); color: var(--color-muted); } .ds-badge-lime { background: rgb(198 244 50 / 0.15); color: var(--color-lime); } .ds-badge-warn { background: rgb(251 191 36 / 0.15); color: var(--color-warn); } .ds-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-lime); animation: ds-live 1.8s ease-in-out infinite; } @keyframes ds-live { 50% { opacity: 0.35; } }"
+    },
+    {
+      "name": "Picker Chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "Exercise / metric picker; selected inverts to chalk.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-chip-on\">1 Supino</button><button class=\"ds-chip\">2 Puxada</button></div>",
+      "css": ".ds-chips { display: flex; gap: 8px; } .ds-chip { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; height: 40px; padding: 0 16px; border: 0; border-radius: 9999px; background: var(--color-card-2); color: var(--color-muted); font-size: 14px; font-weight: 500; cursor: pointer; transition: color 150ms; } .ds-chip:hover { color: var(--color-fg); } .ds-chip-on { background: var(--color-fg); color: var(--color-bg); } .ds-chip:focus-visible { outline: 2px solid var(--color-lime); outline-offset: 2px; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Login fields; the border turns lime on focus.",
+      "html": "<input class=\"ds-input\" type=\"email\" placeholder=\"e-mail\" />",
+      "css": ".ds-input { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; height: 56px; padding: 0 16px; border-radius: 16px; border: 1px solid var(--color-line); background: var(--color-card); color: var(--color-fg); font-size: 16px; outline: none; caret-color: var(--color-lime); } .ds-input:focus { border-color: var(--color-lime); }"
+    },
+    {
+      "name": "Bottom Nav",
+      "kind": "nav",
+      "refersTo": "nav-tab-active",
+      "description": "Five sticky tabs; active is lime with a top bar.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-tab ds-tab-on\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\"/></svg>Hoje</button><button class=\"ds-tab\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 7-8.5 8.5-5-5L2 17\"/><path d=\"M16 7h6v6\"/></svg>Evolução</button></nav>",
+      "css": ".ds-nav { display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid var(--color-line); background: rgb(14 17 22 / 0.92); backdrop-filter: blur(12px); } .ds-tab { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 64px; border: 0; background: none; color: var(--color-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: color 150ms; } .ds-tab:hover { color: var(--color-fg); } .ds-tab-on { color: var(--color-lime); } .ds-tab-on::before { content: ''; position: absolute; top: 0; width: 32px; height: 2px; border-radius: 9999px; background: var(--color-lime); }"
+    },
+    {
+      "name": "Recomposition Triad",
+      "kind": "custom",
+      "refersTo": "inset-panel",
+      "description": "Signature instrument row: arrow + word + delta per signal; hourglass + date while collecting.",
+      "html": "<ul class=\"ds-triad\"><li><span class=\"ds-tl\">Peso</span><span class=\"ds-tv ds-ok\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7 7 10 10M17 7v10H7\"/></svg>caindo</span><span class=\"ds-tl\">−1,2 kg</span></li><li><span class=\"ds-tl\">Força</span><span class=\"ds-tv ds-ok\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 17 17 7M7 7h10v10\"/></svg>subindo</span><span class=\"ds-tl\">+9,8%</span></li><li><span class=\"ds-tl\">Cintura</span><span class=\"ds-tp\">seta em 12/11</span></li></ul>",
+      "css": ".ds-triad { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; padding: 0; list-style: none; border-radius: 16px; background: rgb(14 17 22 / 0.6); box-shadow: 0 0 0 1px var(--color-line); } .ds-triad li { display: flex; flex-direction: column; gap: 4px; padding: 12px; } .ds-triad li + li { border-left: 1px solid var(--color-line); } .ds-tl { font-size: 13px; color: var(--color-muted); } .ds-tv { display: flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 600; } .ds-ok { color: var(--color-ok); } .ds-tp { font-size: 15px; font-weight: 500; color: rgb(242 244 247 / 0.8); }"
+    },
+    {
+      "name": "Collecting State",
+      "kind": "custom",
+      "refersTo": "inset-panel",
+      "description": "Replaces any chart without enough data: what is missing, plus a segmented count.",
+      "html": "<div class=\"ds-collect\"><p class=\"ds-ct\">Média de 7 dias</p><p class=\"ds-cs\">Pese-se pela manhã; a linha aparece com 7 pesagens.</p><div class=\"ds-cm\"><span>3 de 7 registros</span><span>faltam 4</span></div><div class=\"ds-seg\"><i class=\"on\"></i><i class=\"on\"></i><i class=\"on\"></i><i></i><i></i><i></i><i></i></div></div>",
+      "css": ".ds-collect { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; border: 1px dashed var(--color-line); border-radius: 16px; padding: 16px; color: var(--color-fg); } .ds-ct { margin: 0; font-weight: 500; } .ds-cs { margin: 4px 0 0; font-size: 14px; line-height: 1.6; color: var(--color-muted); } .ds-cm { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; color: var(--color-muted); } .ds-seg { display: flex; gap: 4px; margin-top: 6px; } .ds-seg i { flex: 1; height: 6px; border-radius: 9999px; background: var(--color-line); } .ds-seg i.on { background: var(--color-lime); }"
+    },
+    {
+      "name": "PR Seal",
+      "kind": "custom",
+      "refersTo": "pr-seal",
+      "description": "Stamps in when a confirmed set beats a record.",
+      "html": "<span class=\"ds-pr\">PR</span>",
+      "css": ".ds-pr { font-family: var(--font-sans); font-feature-settings: 'tnum' 1, 'cv11' 1; display: inline-block; padding: 2px 6px; border-radius: 6px; background: var(--color-lime); color: var(--color-bg); font-size: 12px; font-weight: 900; letter-spacing: 0.025em; animation: ds-seal 520ms cubic-bezier(0.16, 1, 0.3, 1); } @keyframes ds-seal { 0% { transform: scale(0.4) rotate(-12deg); opacity: 0; } 70% { transform: scale(1.2) rotate(3deg); opacity: 1; } 100% { transform: none; } } @media (prefers-reduced-motion: reduce) { .ds-pr { animation: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Gym-Floor Instrument Panel",
+    "overview": "A near-black panel read at arm's length, sweaty, in low light. Each card carries one protagonist number in heavy tabular Inter and a plain-language reading under it; everything else is quiet grey. Density is deliberately low: big cards, few facts per screen, primary actions in the bottom third.\n\nEvolution is the protagonist. The recomposition triad (peso · cintura · força) is the system's instrument row, and missing data is stated in words with what is still needed, never drawn as an empty chart. Lime is the single loud voice: it means \"do this\", \"you did it\" or \"here, now\".\n\nDepth comes from stepping the card colour, not from shadows. Motion is short, eased out, and only confirms: rings grow, the check pops, the PR seal stamps.",
+    "keyCharacteristics": [
+      "Dark ground, cards stepped by colour, 1px hairlines.",
+      "One protagonist numeral per card (34–56px bold, tabular) against 13–16px labels.",
+      "Lime reserved for action, achievement and \"now\"; metric hues only on their data.",
+      "Every state is colour plus word or icon.",
+      "Honest \"coletando dados\" states with a count of what is missing.",
+      "48px minimum touch targets; 56–64px on set confirmation and steppers."
+    ],
+    "rules": [
+      {
+        "name": "The One Lime Rule",
+        "body": "Lime marks action, achievement and \"now\", nothing else. A screen has one solid-lime button at most; other lime is rings, seals, dots and 15%-tint badges.",
+        "section": "colors"
+      },
+      {
+        "name": "The Data-Owns-Its-Hue Rule",
+        "body": "`kcal`, `protein`, `carb` and `fat` appear only on their own numbers, rings and series. Never as decoration, headings or buttons.",
+        "section": "colors"
+      },
+      {
+        "name": "The Colour-Plus-Word Rule",
+        "body": "No state is carried by colour alone: triad arrows carry a drawn arrow plus \"caindo/estável/subindo\", badges carry text, modality dots sit beside the modality name.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Protagonist Rule",
+        "body": "Each card has exactly one numeral at 32px or larger; everything around it is 13–16px. If two numbers compete, one becomes a label line.",
+        "section": "typography"
+      },
+      {
+        "name": "The Unit Steps Down Rule",
+        "body": "Units and denominators sit beside the number at base or `text-lg` size, normal weight, `muted` (\"81,9 kg\", \"2/9\").",
+        "section": "typography"
+      },
+      {
+        "name": "The Elevation-Is-Colour Rule",
+        "body": "A card that needs more emphasis moves to `card-2` and, if it means \"now\", gets a 1px lime ring at 30–40%. It never gets a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep text on lime in `bg` and use one solid-lime button per screen, placed in the bottom third of its card.",
+      "**Do** pair every status colour with an arrow, icon or word (The Colour-Plus-Word Rule).",
+      "**Do** replace any chart without enough data with the Collecting state, stating how many records are missing.",
+      "**Do** give every tappable element at least 48px, and 56–64px for set confirmation and steppers.",
+      "**Do** step emphasis by surface colour (`card` → `card-2`) and a 1px lime ring at 30–40% for \"now\".",
+      "**Do** use tabular figures for every changing number and label only the last value on a trend.",
+      "**Do** respect `prefers-reduced-motion` and add haptics only to confirmations (15ms check, 8ms stepper, double pulse PR)."
+    ],
+    "donts": [
+      "**Don't** use `kcal`, `protein`, `carb` or `fat` outside their own data.",
+      "**Don't** put drop shadows on cards; shadows belong only to toasts and tooltips.",
+      "**Don't** draw an empty or one-point chart to fill space.",
+      "**Don't** put two protagonist numerals of 32px or more in the same card.",
+      "**Don't** set running text below 14px; 12–13px is for labels, badges and meta lines only.",
+      "**Don't** make a hidden gesture the only way to do something."
+    ]
+  }
+}
