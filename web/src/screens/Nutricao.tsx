@@ -127,7 +127,7 @@ export function CreatineButton({ on, onToggle }: { on: boolean; onToggle: () => 
   return (
     <button type="button" onClick={onToggle} aria-pressed={on}
       className={`flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors duration-150 ${on ? 'bg-lime/12 ring-1 ring-lime/50' : 'bg-card-2 hover:bg-line/60'}`}>
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${on ? 'check-pop bg-lime text-bg' : 'border-2 border-muted/50 text-muted'}`} aria-hidden="true">
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${on ? 'check-pop action-fill' : 'border-2 border-muted/50 text-muted'}`} aria-hidden="true">
         {on ? <Check size={20} strokeWidth={3} /> : <Pill size={18} />}
       </span>
       <span className="flex-1 font-semibold">Creatina</span>

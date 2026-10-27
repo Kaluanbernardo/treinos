@@ -310,7 +310,7 @@ function Compare({ before, after, labels }: { before?: ProgressPhoto; after?: Pr
         {ub && <img src={ub} alt={`Depois (${labels[1]})`} className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" draggable={false} />}
         {ua && <img src={ua} alt={`Antes (${labels[0]})`} className="absolute inset-0 h-full w-full object-cover" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} referrerPolicy="no-referrer" draggable={false} />}
         <div className="absolute inset-y-0 w-0.5 bg-lime" style={{ left: `${pos}%` }} aria-hidden="true">
-          <div className="absolute top-1/2 left-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-lime text-bg"><ChevronLeft size={16} /><ChevronRight size={16} /></div>
+          <div className="absolute top-1/2 left-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full action-fill"><ChevronLeft size={16} /><ChevronRight size={16} /></div>
         </div>
         <span className="absolute top-2 left-2 rounded-md bg-bg/80 px-2 py-1 text-xs font-semibold">{labels[0]}</span>
         <span className="absolute top-2 right-2 rounded-md bg-bg/80 px-2 py-1 text-xs font-semibold">{labels[1]}</span>

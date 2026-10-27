@@ -32,8 +32,11 @@ export default defineConfig({
         scope: '/treinos/',
         display: 'standalone',
         orientation: 'portrait',
-        theme_color: '#0E1116',
-        background_color: '#0E1116',
+        // cores do splash/barra antes do JS: claro como base e escuro via user_preferences.color_scheme_dark
+        // (manifest incubations, Chromium). Depois do load, as metas theme-color do index.html mandam.
+        theme_color: '#E8ECF1',
+        background_color: '#E8ECF1',
+        ...({ user_preferences: { color_scheme_dark: { theme_color: '#0E1116', background_color: '#0E1116' } } } as object),
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

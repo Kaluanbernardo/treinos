@@ -42,7 +42,7 @@ export function Login() {
         {error && <p role="alert" className="flex items-center gap-2 text-err"><AlertTriangle size={18} aria-hidden="true" /> {error}</p>}
         <button
           type="submit" disabled={busy}
-          className="mt-2 h-14 rounded-2xl bg-lime text-lg font-semibold text-bg transition-opacity duration-150 disabled:opacity-60"
+          className="mt-2 h-14 rounded-2xl action-fill text-lg font-semibold transition-opacity duration-150 disabled:opacity-60"
         >
           {busy ? 'Entrando…' : 'Entrar'}
         </button>

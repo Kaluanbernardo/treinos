@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 /**
- * Anel em SVG (stroke-dasharray): trilho #2A3140, arco arredondado na cor da métrica,
+ * Anel em SVG (stroke-dasharray): trilho `line`, arco arredondado na cor da métrica,
  * arco extra em âmbar acima da meta. Cresce ao abrir (respeita reduced-motion via CSS).
  */
 export function Ring({ value, target, color, size = 120, stroke = 12, children, label }: {

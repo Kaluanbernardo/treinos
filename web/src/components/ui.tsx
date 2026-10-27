@@ -51,7 +51,7 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' 
 
 export function Button({ variant = 'secondary', size = 'md', className = '', children, ...rest }: BtnProps) {
   const v = {
-    primary: 'bg-lime text-bg font-semibold hover:brightness-105',
+    primary: 'action-fill font-semibold hover:brightness-105',
     secondary: 'bg-card-2 text-fg border border-line hover:border-muted/60',
     ghost: 'text-muted hover:text-fg',
     danger: 'bg-err/12 text-err border border-err/30',
@@ -81,19 +81,21 @@ export function IconButton({ label, className = '', children, ...rest }: ButtonH
 }
 
 /** Controle segmentado (4 sem · 3 meses · tudo). */
-export function Segmented<T extends string>({ value, options, onChange, label, size = 'md' }: {
-  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string; size?: 'sm' | 'md'
+export function Segmented<T extends string>({ value, options, onChange, label, size = 'md', track = 'bg-card' }: {
+  value: T; options: { value: T; label: string; icon?: ReactNode }[]; onChange: (v: T) => void; label: string
+  size?: 'sm' | 'md'; track?: string
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-xl bg-card p-1">
+    <div role="radiogroup" aria-label={label} className={`flex rounded-xl p-1 ${track}`}>
       {options.map((o) => {
         const on = o.value === value
         return (
           <button
             key={o.value} type="button" role="radio" aria-checked={on} onClick={() => onChange(o.value)}
-            className={`flex-1 rounded-lg font-medium transition-colors duration-150 ${size === 'sm' ? 'h-10 text-sm' : 'h-11 text-[15px]'} ${
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-150 ${size === 'sm' ? 'h-10 text-sm' : 'h-11 text-[15px]'} ${
               on ? 'bg-card-2 text-fg shadow-[0_1px_0_0_var(--color-line)_inset]' : 'text-muted hover:text-fg'}`}
           >
+            {o.icon && <span aria-hidden="true" className={on ? 'text-lime' : ''}>{o.icon}</span>}
             {o.label}
           </button>
         )
@@ -168,7 +170,7 @@ export function Toaster() {
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+88px)] z-50 mx-auto flex max-w-lg flex-col gap-2 px-4">
       {list.map((t) => (
-        <div key={t.id} className={`toast-in pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border bg-card-2 px-4 py-3 shadow-[0_8px_24px_-8px_rgb(0_0_0/0.6)] ${
+        <div key={t.id} className={`toast-in pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border bg-card-2 px-4 py-3 shadow-[var(--shadow-toast)] ${
           t.tone === 'err' ? 'border-err/40' : t.tone === 'lime' ? 'border-lime/50' : 'border-line'}`}>
           <p className={`text-[15px] ${t.tone === 'err' ? 'text-err' : t.tone === 'lime' ? 'text-lime' : 'text-fg'}`}>{t.text}</p>
           {t.action && (

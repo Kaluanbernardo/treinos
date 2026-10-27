@@ -222,10 +222,10 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
                   className="flex h-16 w-full items-center gap-3 rounded-2xl bg-card px-4 text-left"
                   aria-label={`Série ${n} feita: ${kgFmt(done.kg)} kg × ${done.reps}. Tocar para desfazer.`}
                 >
-                  <span className="check-pop flex h-9 w-9 items-center justify-center rounded-full bg-lime text-bg" aria-hidden="true"><Check size={20} strokeWidth={3} /></span>
+                  <span className="check-pop flex h-9 w-9 items-center justify-center rounded-full action-fill" aria-hidden="true"><Check size={20} strokeWidth={3} /></span>
                   <span className="w-6 text-center font-semibold tabular-nums text-muted">{n}</span>
                   <span className="text-xl font-bold tabular-nums">{done.kg ? `${kgFmt(done.kg)} kg` : 'corpo'} × {done.reps}{unitSuffix(te)}</span>
-                  {pr && <span className="pr-seal ml-1 rounded-md bg-lime px-1.5 py-0.5 text-xs font-black tracking-wide text-bg">PR</span>}
+                  {pr && <span className="pr-seal ml-1 rounded-md action-fill px-1.5 py-0.5 text-xs font-black tracking-wide">PR</span>}
                   <Undo2 size={18} className="ml-auto text-muted" aria-hidden="true" />
                 </button>
               </li>
@@ -529,7 +529,7 @@ function Resumo({ id }: { id: string }) {
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-1.5 font-medium">
                     <span className="truncate">{r.exercise_name}</span>
-                    {prByEx.has(r.exercise_id) && <span className="rounded-md bg-lime px-1.5 py-0.5 text-[11px] font-black text-bg">PR</span>}
+                    {prByEx.has(r.exercise_id) && <span className="rounded-md action-fill px-1.5 py-0.5 text-[11px] font-black">PR</span>}
                   </span>
                   {r.top_kg ? <span className="shrink-0 text-lg font-bold tabular-nums">{kgFmt(r.top_kg)} × {r.top_reps}</span>
                     : <span className="shrink-0 text-sm text-muted">+12 reps (sem 1RM)</span>}

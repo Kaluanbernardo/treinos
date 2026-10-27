@@ -81,7 +81,7 @@ export function Treino() {
                     className={`flex h-full min-h-[148px] w-full flex-col rounded-[var(--radius-card)] p-4 text-left transition-colors duration-150 ${isToday ? 'bg-card-2 ring-1 ring-lime/50' : 'bg-card hover:bg-card-2'}`}
                   >
                     <span className="flex items-start justify-between gap-2">
-                      <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg font-bold ${isToday ? 'bg-lime text-bg' : 'bg-card-2 text-fg'}`} aria-hidden="true">
+                      <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg font-bold ${isToday ? 'action-fill' : 'bg-card-2 text-fg'}`} aria-hidden="true">
                         {monogram(t.name)}
                       </span>
                       {isToday && <Badge tone="lime">hoje</Badge>}

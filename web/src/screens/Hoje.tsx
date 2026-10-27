@@ -43,7 +43,7 @@ export function Hoje() {
         <div className="-mr-2 flex shrink-0 items-center">
           <IconButton label={unread ? `Notas do assistente (${unread} novas)` : 'Notas do assistente'} onClick={() => go('notas')}>
             <NotebookText size={24} />
-            {unread > 0 && <span className="absolute top-2 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime px-1 text-[11px] font-bold text-bg" aria-hidden="true">{unread}</span>}
+            {unread > 0 && <span className="absolute top-2 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full action-fill px-1 text-[11px] font-bold" aria-hidden="true">{unread}</span>}
           </IconButton>
           <IconButton label="Configurações" onClick={() => go('config')}><SlidersHorizontal size={24} /></IconButton>
         </div>

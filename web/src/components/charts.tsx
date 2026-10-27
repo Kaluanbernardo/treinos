@@ -7,14 +7,14 @@ import type { NameType, ValueType } from 'recharts/types/component/DefaultToolti
 import { dm, num } from '../lib/format'
 
 const AXIS = { stroke: 'var(--color-muted)', fontSize: 12, tickLine: false, axisLine: false } as const
-const GRID = 'rgb(42 49 64 / 0.55)'
+const GRID = 'var(--color-grid)'
 const ts = (iso: string) => Date.parse(`${iso}T12:00:00Z`)
 const fromTs = (t: number) => new Date(t).toISOString().slice(0, 10)
 
 export interface TrendPoint { date: string; value?: number | null; avg?: number | null; label?: string }
 
 function TipBox({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-line bg-card-2 px-3 py-2 text-sm shadow-[0_8px_20px_-8px_rgb(0_0_0/0.7)]">{children}</div>
+  return <div className="rounded-xl border border-line bg-card-2 px-3 py-2 text-sm shadow-[var(--shadow-tip)]">{children}</div>
 }
 
 /**
@@ -116,7 +116,7 @@ export function Bars({ data, color, unit, height = 150, ariaLabel, digits = 0, b
                   fill={color} fillOpacity={p.payload?.highlight === false ? 0.45 : 1} />
               }} />
             <Tooltip
-              cursor={{ fill: 'rgb(255 255 255 / 0.04)' }}
+              cursor={{ fill: 'var(--color-fg)', fillOpacity: 0.05 }}
               content={(p: TooltipContentProps<ValueType, NameType>) => {
                 const row = p.payload?.[0]?.payload as BarPoint | undefined
                 if (!p.active || !row) return null

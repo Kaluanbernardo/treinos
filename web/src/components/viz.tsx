@@ -149,7 +149,7 @@ export function WeekStrip({ days, onPick }: { days: WeekDay[]; onPick?: (date: s
           <>
             <span className={`text-xs font-medium ${d.today ? 'text-lime' : 'text-muted'}`}>{d.label}</span>
             <span className={`mt-1 flex h-9 w-9 items-center justify-center rounded-full text-[15px] font-semibold tabular-nums ${
-              d.today ? 'bg-lime text-bg' : total && done === total ? 'bg-ok/15 text-ok' : 'text-fg'}`}>
+              d.today ? 'action-fill' : total && done === total ? 'bg-ok/15 text-ok' : 'text-fg'}`}>
               {total > 0 && done === total && !d.today ? <Check size={18} strokeWidth={3} aria-hidden="true" /> : Number(d.date.slice(8))}
             </span>
             <span className="mt-1.5 flex h-2 items-center gap-0.5" aria-hidden="true">
@@ -210,8 +210,8 @@ export function PlanBars({ data, color, height = 72, label }: { data: PlanBar[];
 /** Quadradinho "Qua / 28" (lime quando é hoje). */
 export function DateTile({ iso, active = false }: { iso: string; active?: boolean }) {
   return (
-    <span className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl ${active ? 'bg-lime text-bg' : 'bg-card-2'}`} aria-hidden="true">
-      <span className={`text-xs font-medium ${active ? 'text-bg/80' : 'text-muted'}`}>{capitalize(wdShort(iso)).slice(0, 3)}</span>
+    <span className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl ${active ? 'action-fill' : 'bg-card-2'}`} aria-hidden="true">
+      <span className={`text-xs font-medium ${active ? 'text-on-action/80' : 'text-muted'}`}>{capitalize(wdShort(iso)).slice(0, 3)}</span>
       <span className="text-xl font-bold leading-none tabular-nums">{Number(iso.slice(8))}</span>
     </span>
   )

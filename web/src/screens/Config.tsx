@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Database, Info, LogOut, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Database, Info, LogOut, Moon, Smartphone, Sun, Wifi, WifiOff } from 'lucide-react'
 import { useLastData } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { go } from '../lib/router'
 import { relTime } from '../lib/format'
-import { Button, Card, CardHead, IconButton, Skeleton } from '../components/ui'
+import { useTheme, type ThemePref } from '../lib/theme'
+import { Button, Card, CardHead, IconButton, Segmented, Skeleton } from '../components/ui'
 
 declare const __APP_VERSION__: string
 declare const __BUILD_SHA__: string
@@ -36,6 +37,8 @@ export function Config({ email }: { email: string }) {
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Configurações</h1>
       </header>
 
+      <ThemeCard />
+
       <Card aria-labelledby="st-title">
         <CardHead id="st-title" title="Status" />
         <dl className="mt-3 divide-y divide-line">
@@ -65,6 +68,25 @@ export function Config({ email }: { email: string }) {
         os registros de treino e a creatina. Horários em America/São Paulo.
       </p>
     </div>
+  )
+}
+
+const THEME_OPTIONS: { value: ThemePref; label: string; icon: React.ReactNode }[] = [
+  { value: 'light', label: 'Claro', icon: <Sun size={18} /> },
+  { value: 'dark', label: 'Escuro', icon: <Moon size={18} /> },
+  { value: 'system', label: 'Sistema', icon: <Smartphone size={18} /> },
+]
+
+function ThemeCard() {
+  const { pref, theme, setPref } = useTheme()
+  return (
+    <Card aria-labelledby="theme-title">
+      <CardHead id="theme-title" title="Tema"
+        sub={pref === 'system' ? `Segue o celular · ${theme === 'light' ? 'claro' : 'escuro'} agora` : 'Fixo neste aparelho'} />
+      <div className="mt-4">
+        <Segmented label="Tema do app" value={pref} options={THEME_OPTIONS} onChange={setPref} track="bg-bg/70 ring-1 ring-line" />
+      </div>
+    </Card>
   )
 }
 

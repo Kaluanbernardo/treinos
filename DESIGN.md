@@ -1,6 +1,6 @@
 ---
 name: Fitness Kaluan
-description: Dark gym-panel PWA where body recomposition is the protagonist, readable at arm's length.
+description: Gym-panel PWA (dark by default, with a light theme) where body recomposition is the protagonist, readable at arm's length.
 colors:
   bg: "#0E1116"
   card: "#171B22"
@@ -240,6 +240,11 @@ A cool near-black ground with one acid-lime voice and four metric hues that live
 - **Hairline** (`line`): borders, dividers, ring tracks, dashed collecting outlines, unfilled progress, scrollbar.
 - **Chalk** (`fg`): primary text, protagonist numbers, selected chip fill.
 - **Slate** (`muted`): labels, units, meta lines, axis ticks, inactive icons.
+
+### Light theme (Claro)
+Chosen in Configurações → Tema (Claro · Escuro · Sistema, default Sistema, stored in `localStorage.theme`, applied to `<html data-theme>` by an inline script before first paint). Same token names, overridden under `:root[data-theme="light"]` in `web/src/index.css`; the `dark:` / `light:` Tailwind variants follow the attribute, not the media query. Elevation still goes toward light: ground `#E8ECF1`, `card` `#F7F9FB`, `card-2` `#FFFFFF`, `line` `#CDD4DE`, `fg` `#10141B`, `muted` `#4F5A69`. Inks are darkened so every one passes AA (≥4.5:1) on bg, card and card-2: `lime` `#456F0A`, `kcal` `#B23C0A`, `protein` `#0369A1`, `carb` `#456F0A`, `fat` `#6D28D9`, `ok` `#047857`, `warn` `#A14A06`, `err` `#B91C1C`; chart grid `--color-grid`, float shadows `--shadow-toast` / `--shadow-tip`.
+
+**Lime is two tokens.** `lime` is the ink (text, strokes, rings, dots, 15% tints) and darkens in light. `action` is the vivid `#C6F432` fill of the primary button, PR seal, today disc and check, always with `on-action` (`#0E1116`) text, via the `action-fill` utility, which adds a 1px inner olive edge in light so the fill holds its shape on white. Never put `text-bg` on a lime fill.
 
 ### Named Rules
 **The One Lime Rule.** Lime marks action, achievement and "now", nothing else. A screen has one solid-lime button at most; other lime is rings, seals, dots and 15%-tint badges.
