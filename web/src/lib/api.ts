@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { supabase } from './supabase'
 import { addDays, todaySP } from './format'
 import type {
-  BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MonthlySummary, MuscleVolumeWeek,
+  BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MealPhoto, MonthlySummary, MuscleVolumeWeek,
   NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, Recomposition,
   SessionRow, SessionStatus, SetLog, Streak, Template, WeightPoint,
 } from './types'
@@ -334,6 +334,12 @@ export const useFoodLogs = (date: string) =>
     queryFn: () => rows<FoodLog>(db().from('food_logs').select('*').eq('date', date).order('logged_at')),
   })
 
+export const useMealPhotos = (date: string) =>
+  useQuery({
+    queryKey: ['meal_photos', date],
+    queryFn: () => rows<MealPhoto>(db().from('meal_photos').select('*').eq('date', date).order('created_at')),
+  })
+
 export function useToggleCreatine() {
   const qc = useQueryClient()
   return useMutation({
@@ -399,14 +405,15 @@ export const usePhotos = () =>
   useQuery({ queryKey: ['progress_photos'], queryFn: () => rows<ProgressPhoto>(db().from('progress_photos').select('*').order('date')) })
 
 /** Signed URLs de curta duração (10 min) para o bucket privado `progress`. */
-export const useSignedUrls = (paths: string[]) =>
+/** Signed URLs (10 min) de um bucket privado: `progress` (fotos de progresso) ou `meals` (refeições). */
+export const useSignedUrls = (paths: string[], bucket: 'progress' | 'meals' = 'progress') =>
   useQuery({
-    queryKey: ['signed', paths],
+    queryKey: ['signed', bucket, paths],
     enabled: paths.length > 0,
     staleTime: 8 * 60_000,
     gcTime: 9 * 60_000,
     queryFn: async () => {
-      const { data, error } = await db().storage.from('progress').createSignedUrls(paths, 600)
+      const { data, error } = await db().storage.from(bucket).createSignedUrls(paths, 600)
       if (error) throw new Error(error.message)
       return Object.fromEntries((data ?? []).map((d) => [d.path ?? '', d.signedUrl])) as Record<string, string>
     },

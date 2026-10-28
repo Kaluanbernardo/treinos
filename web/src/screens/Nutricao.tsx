@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { Camera, Check, ChevronLeft, ChevronRight, Droplets, MessageCircle, Pill } from 'lucide-react'
-import { useDailyNutrition, useFoodLogs, useNutritionTargets, useToggleCreatine } from '../lib/api'
-import type { DailyNutrition, FoodLog, NutritionTargets } from '../lib/types'
-import { addDays, capitalize, intFmt, kgFmt, longDay, num, todaySP } from '../lib/format'
-import { Badge, Card, CardHead, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
+import { useEffect, useId, useRef, useState } from 'react'
+import { CalendarCheck, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Droplets, ImageOff, Maximize2, MessageCircle, Pill, X } from 'lucide-react'
+import { useDailyNutrition, useFoodLogs, useMealPhotos, useNutritionTargets, useSignedUrls, useToggleCreatine } from '../lib/api'
+import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets } from '../lib/types'
+import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
+import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
 
@@ -15,16 +15,23 @@ export function Nutricao() {
   const daily = useDailyNutrition()
   const targets = useNutritionTargets()
   const logs = useFoodLogs(date)
+  const photos = useMealPhotos(date)
   const day = daily.data?.find((d) => d.date === date) ?? { ...EMPTY, date }
   const t = targets.data
+  const meals = logs.data && photos.data ? groupMeals(logs.data, photos.data) : []
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Nutrição</h1>
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Nutrição</h1>
+        {date !== today && (
+          <Button onClick={() => setDate(today)} className="flex items-center gap-2"><CalendarCheck size={18} aria-hidden="true" /> Hoje</Button>
+        )}
+      </div>
 
       <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Dia">
         <IconButton label="Dia anterior" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={24} /></IconButton>
-        <p className="text-center">
+        <p className="text-center" aria-live="polite">
           <span className="block font-semibold">{date === today ? 'Hoje' : date === addDays(today, -1) ? 'Ontem' : capitalize(longDay(date).split(',')[0])}</span>
           <span className="block text-sm text-muted">{capitalize(longDay(date).split(', ')[1] ?? '')}</span>
         </p>
@@ -41,15 +48,18 @@ export function Nutricao() {
         <Macros day={day} t={t ?? null} />
       )}
 
-      <Checks day={day} date={date} t={t ?? null} />
+      <section aria-labelledby="ref-title" className="flex flex-col gap-3">
+        <div className="mt-2 flex items-baseline justify-between gap-3">
+          <h2 id="ref-title" className="text-xl font-semibold">Refeições</h2>
+          {meals.length > 0 && <span className="text-sm tabular-nums text-muted">{plural(meals.length, 'refeição', 'refeições')}</span>}
+        </div>
+        {logs.isError || photos.isError ? <ErrorState what="as refeições" onRetry={() => { logs.refetch(); photos.refetch() }} />
+          : logs.isPending || photos.isPending ? <><Skeleton className="h-40" /><Skeleton className="h-40" /></>
+            : meals.length === 0 ? <EmptyDay isToday={date === today} />
+              : <Feed meals={meals} />}
+      </section>
 
-      <Card aria-labelledby="ref-title">
-        <CardHead id="ref-title" title="Refeições" aside={day.has_estimated ? <Badge tone="warn"><Camera size={13} aria-hidden="true" /> estimativa</Badge> : undefined} />
-        {logs.isError ? <div className="mt-3"><ErrorState what="as refeições" onRetry={() => logs.refetch()} /></div>
-          : logs.isPending ? <Skeleton className="mt-3 h-32" />
-            : logs.data!.length === 0 ? <EmptyDay isToday={date === today} />
-              : <Meals logs={logs.data!} />}
-      </Card>
+      <Checks day={day} date={date} t={t ?? null} />
     </div>
   )
 }
@@ -138,55 +148,202 @@ export function CreatineButton({ on, onToggle }: { on: boolean; onToggle: () => 
 
 function EmptyDay({ isToday }: { isToday: boolean }) {
   return (
-    <div className="mt-3 flex items-center gap-3 rounded-2xl border border-dashed border-line p-4">
+    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line p-4">
       <MessageCircle size={22} className="shrink-0 text-muted" aria-hidden="true" />
       <p className="text-[15px] text-muted"><span className="font-medium text-fg">{isToday ? 'Nada registrado hoje.' : 'Sem refeições neste dia.'}</span> Mande foto ou texto no chat.</p>
     </div>
   )
 }
 
-function Meals({ logs }: { logs: FoodLog[] }) {
-  const groups: { meal: string; items: FoodLog[] }[] = []
-  for (const l of logs) {
-    const m = l.meal || 'Outros'
-    const g = groups.find((x) => x.meal === m)
-    if (g) g.items.push(l); else groups.push({ meal: m, items: [l] })
+// ---------------------------------------------------------------- feed de refeições
+interface Meal { key: string; name: string; at: string; items: FoodLog[]; photos: MealPhoto[]; kcal: number; p: number; c: number; f: number; estimated: boolean }
+
+const mealKey = (m: string | null) => norm(m || 'outros').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+const MEAL_NAMES: Record<string, string> = {
+  cafe: 'Café da manhã', 'cafe-da-manha': 'Café da manhã', almoco: 'Almoço', jantar: 'Jantar', lanche: 'Lanche', ceia: 'Ceia',
+  'pre-treino': 'Pré-treino', 'pos-treino': 'Pós-treino', outros: 'Outros',
+}
+const g1 = (n: number) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+const hm = (ts: string) => new Date(ts).toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })
+
+/** Agrupa itens e fotos pelo nome da refeição (sem acento/caixa: "café" = "cafe"), em ordem cronológica. */
+function groupMeals(logs: FoodLog[], photos: MealPhoto[]): Meal[] {
+  const by = new Map<string, Meal>()
+  const get = (raw: string | null, at: string) => {
+    const key = mealKey(raw)
+    let m = by.get(key)
+    if (!m) by.set(key, m = { key, name: MEAL_NAMES[key] ?? capitalize(raw?.trim() || 'Outros'), at, items: [], photos: [], kcal: 0, p: 0, c: 0, f: 0, estimated: false })
+    if (at < m.at) m.at = at
+    return m
   }
+  for (const l of logs) {
+    const m = get(l.meal, l.logged_at)
+    m.items.push(l)
+    m.kcal += Number(l.kcal); m.p += Number(l.protein_g); m.c += Number(l.carb_g); m.f += Number(l.fat_g)
+    m.estimated ||= l.estimated
+  }
+  for (const ph of photos) get(ph.meal, ph.created_at).photos.push(ph)
+  return [...by.values()].sort((a, b) => a.at.localeCompare(b.at))
+}
+
+function Feed({ meals }: { meals: Meal[] }) {
+  const all = meals.flatMap((m) => m.photos)
+  const thumbs = useSignedUrls(all.map((p) => p.thumb_path ?? p.path), 'meals')
+  const [view, setView] = useState<{ meal: Meal; i: number } | null>(null)
   return (
-    <div className="mt-2 flex flex-col">
-      {groups.map((g) => {
-        const sum = (k: 'kcal' | 'protein_g' | 'carb_g' | 'fat_g') => g.items.reduce((s, i) => s + Number(i[k]), 0)
-        const kcal = sum('kcal'); const p = sum('protein_g'); const c = sum('carb_g'); const f = sum('fat_g')
-        const parts = [{ v: p * 4, c: 'var(--color-protein)' }, { v: c * 4, c: 'var(--color-carb)' }, { v: f * 9, c: 'var(--color-fat)' }]
-        const tot = parts.reduce((s, x) => s + x.v, 0) || 1
-        return (
-          <section key={g.meal} className="border-b border-line py-3.5 last:border-0">
-            <div className="flex items-baseline justify-between gap-2">
-              <h3 className="text-lg font-semibold">{capitalize(g.meal)}</h3>
-              <p className="tabular-nums text-muted"><b className="text-lg font-bold text-kcal">{intFmt(kcal)}</b> kcal</p>
-            </div>
-            <div className="mt-2 flex h-1.5 gap-0.5 overflow-hidden rounded-full" role="img"
-              aria-label={`Proteína ${intFmt(p)} g, carboidrato ${intFmt(c)} g, gordura ${intFmt(f)} g`}>
-              {parts.map((x, i) => <span key={i} style={{ width: `${(x.v / tot) * 100}%`, background: x.c }} />)}
-            </div>
-            <p className="mt-1.5 flex gap-3 text-[13px] tabular-nums text-muted">
-              <span><b className="text-protein">{intFmt(p)}</b> P</span><span><b className="text-carb">{intFmt(c)}</b> C</span><span><b className="text-fat">{intFmt(f)}</b> G</span>
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {g.items.map((i) => (
-                <li key={i.id} className="flex items-start justify-between gap-3 text-[15px]">
-                  <span className="min-w-0">
-                    <span className="text-fg">{i.description}</span>
-                    <span className="text-muted"> · {i.portion_label ? `${i.portion_qty && i.portion_qty !== 1 ? `${kgFmt(i.portion_qty)} × ` : ''}${i.portion_label} (${intFmt(i.grams)} g)` : i.grams ? `${intFmt(i.grams)} g` : ''}</span>
-                    {i.estimated && <Badge tone="warn" className="ml-1.5 align-middle">estimado</Badge>}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted">{intFmt(i.kcal)}</span>
-                </li>
-              ))}
+    <>
+      <ol className="flex flex-col gap-3">
+        {meals.map((m) => (
+          <li key={m.key}>
+            <MealCard meal={m} thumb={m.photos[0] ? thumbs.data?.[m.photos[0].thumb_path ?? m.photos[0].path] : undefined}
+              thumbState={thumbs.isError ? 'error' : thumbs.isPending ? 'loading' : 'ok'} onOpen={() => setView({ meal: m, i: 0 })} />
+          </li>
+        ))}
+      </ol>
+      {view && <PhotoViewer meal={view.meal} index={view.i} onIndex={(i) => setView({ ...view, i })} onClose={() => setView(null)} />}
+    </>
+  )
+}
+
+function MealCard({ meal: m, thumb, thumbState, onOpen }: { meal: Meal; thumb?: string; thumbState: 'loading' | 'error' | 'ok'; onOpen: () => void }) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  const n = m.items.length
+  const allEst = n > 0 && m.items.every((i) => i.estimated)   // tudo estimado: o selo do card basta
+  return (
+    <Card as="article" aria-label={`${m.name}, ${intFmt(m.kcal)} kcal`} className="!p-4">
+      <div className="flex gap-4">
+        {m.photos.length > 0 && (
+          <button type="button" onClick={onOpen} aria-label={`Ver foto: ${m.name}`}
+            className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-card-2 ring-1 ring-line transition-transform duration-150 active:scale-[0.98]">
+            {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" draggable={false} />
+              : thumbState === 'loading' ? <span className="absolute inset-0 animate-pulse bg-line/50" aria-hidden="true" />
+                : <ImageOff size={22} className="absolute inset-0 m-auto text-muted" aria-hidden="true" />}
+            <span className="absolute right-1.5 bottom-1.5 flex h-7 min-w-7 items-center justify-center gap-1 rounded-full bg-black/60 px-1.5 text-xs font-semibold text-white" aria-hidden="true">
+              {m.photos.length > 1 ? <>{m.photos.length}</> : null}<Maximize2 size={13} />
+            </span>
+          </button>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="min-w-0 text-lg font-semibold leading-tight">{m.name}</h3>
+            <time className="shrink-0 pt-0.5 text-sm tabular-nums text-muted" dateTime={m.at}>{hm(m.at)}</time>
+          </div>
+          {n > 0 ? (
+            <>
+              <p className="mt-1 flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-[32px] font-bold leading-none tracking-[-0.02em] text-kcal">{intFmt(m.kcal)}</span>
+                <span className="text-muted">kcal</span>
+                {m.estimated && <Badge tone="warn" className="ml-auto self-center"><Camera size={13} aria-hidden="true" /> estimado</Badge>}
+              </p>
+              <MacroBar p={m.p} c={m.c} f={m.f} className="mt-auto pt-3" />
+            </>
+          ) : (
+            <p className="mt-2 text-[15px] text-muted">Itens ainda não registrados.</p>
+          )}
+        </div>
+      </div>
+      {n > 0 && (
+        <>
+          <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={id}
+            className="-mx-1 mt-2 -mb-2 flex h-12 w-[calc(100%+0.5rem)] items-center justify-between rounded-xl px-1 text-[15px] font-medium text-muted transition-colors duration-150 hover:text-fg">
+            <span>{plural(n, 'item', 'itens')}</span>
+            <ChevronDown size={20} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {open && (
+            <ul id={id} className="flex flex-col border-t border-line">
+              {m.items.map((i) => <ItemRow key={i.id} i={i} mark={i.estimated && !allEst} />)}
             </ul>
-          </section>
-        )
-      })}
+          )}
+        </>
+      )}
+    </Card>
+  )
+}
+
+function MacroBar({ p, c, f, className = '' }: { p: number; c: number; f: number; className?: string }) {
+  const parts = [{ v: p * 4, c: 'var(--color-protein)' }, { v: c * 4, c: 'var(--color-carb)' }, { v: f * 9, c: 'var(--color-fat)' }]
+  const tot = parts.reduce((s, x) => s + x.v, 0) || 1
+  return (
+    <div className={className}>
+      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-line" role="img"
+        aria-label={`Proteína ${intFmt(p)} g, carboidrato ${intFmt(c)} g, gordura ${intFmt(f)} g`}>
+        {parts.map((x, i) => x.v > 0 && <span key={i} className="h-full" style={{ width: `${(x.v / tot) * 100}%`, background: x.c }} />)}
+      </div>
+      <p className="mt-1.5 flex gap-3 text-[13px] tabular-nums text-muted" aria-hidden="true">
+        <span><b className="font-semibold text-protein">{intFmt(p)}</b> P</span>
+        <span><b className="font-semibold text-carb">{intFmt(c)}</b> C</span>
+        <span><b className="font-semibold text-fat">{intFmt(f)}</b> G</span>
+      </p>
     </div>
+  )
+}
+
+function ItemRow({ i, mark }: { i: FoodLog; mark: boolean }) {
+  const qty = i.portion_label
+    ? `${i.portion_qty && Number(i.portion_qty) !== 1 ? `${kgFmt(i.portion_qty)} × ` : ''}${i.portion_label}${i.grams ? ` · ${intFmt(i.grams)} g` : ''}`
+    : i.grams ? `${intFmt(i.grams)} g` : null
+  return (
+    <li className="flex items-start justify-between gap-3 border-b border-line/60 py-3 last:border-0 last:pb-1">
+      <div className="min-w-0">
+        <p className="text-base leading-snug">{i.description}</p>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] tabular-nums text-muted">
+          {qty && <span className="text-fg/80">{qty}</span>}
+          <span><b className="font-semibold text-protein">{g1(i.protein_g)}</b> P</span>
+          <span><b className="font-semibold text-carb">{g1(i.carb_g)}</b> C</span>
+          <span><b className="font-semibold text-fat">{g1(i.fat_g)}</b> G</span>
+          {mark && <span className="inline-flex items-center gap-1 font-medium text-warn"><Camera size={12} aria-hidden="true" /> estimado</span>}
+        </p>
+      </div>
+      <p className="shrink-0 text-right tabular-nums"><b className="font-semibold">{intFmt(i.kcal)}</b> <span className="text-sm text-muted">kcal</span></p>
+    </li>
+  )
+}
+
+/** Foto em tela cheia (signed URL do arquivo de 1600 px; a miniatura aparece enquanto carrega). */
+function PhotoViewer({ meal, index, onIndex, onClose }: { meal: Meal; index: number; onIndex: (i: number) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const ph = meal.photos[index]
+  const urls = useSignedUrls(meal.photos.flatMap((p) => [p.path, p.thumb_path ?? p.path]), 'meals')
+  const full = urls.data?.[ph.path]
+  const thumb = urls.data?.[ph.thumb_path ?? ph.path]
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const many = meal.photos.length > 1
+  useEffect(() => {
+    const d = ref.current
+    if (d && !d.open) d.showModal()
+  }, [])
+  return (
+    <dialog ref={ref} onClose={onClose} aria-label={`Foto: ${meal.name}`}
+      className="photo-view m-0 h-dvh max-h-none w-full max-w-none bg-black p-0 text-white outline-none backdrop:bg-black">
+      <div className="relative flex h-full flex-col">
+        <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 pt-[max(env(safe-area-inset-top),12px)] pb-8">
+          <p className="pt-2.5">
+            <span className="block text-lg font-semibold">{meal.name}</span>
+            <span className="block text-sm tabular-nums text-white/70">{hm(meal.at)}{meal.items.length > 0 && <> · {intFmt(meal.kcal)} kcal</>}{many && <> · {index + 1} de {meal.photos.length}</>}</span>
+          </p>
+          <button type="button" onClick={onClose} aria-label="Fechar foto" autoFocus
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white transition-colors duration-150 hover:bg-white/20">
+            <X size={24} />
+          </button>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Fechar foto" tabIndex={-1} className="relative flex flex-1 items-center justify-center">
+          {thumb && loaded !== full && <img src={thumb} alt="" className="absolute inset-0 h-full w-full object-contain blur-sm" referrerPolicy="no-referrer" />}
+          {full && <img src={full} alt={`${meal.name}${ph.note ? `: ${ph.note}` : ''}`} onLoad={() => setLoaded(full)}
+            className="relative max-h-full max-w-full object-contain" referrerPolicy="no-referrer" draggable={false} />}
+          {urls.isError && <span className="flex items-center gap-2 text-white/80"><ImageOff size={20} aria-hidden="true" /> Não consegui carregar a foto.</span>}
+        </button>
+        {(ph.note || many) && (
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/75 to-transparent px-4 pt-10 pb-[max(env(safe-area-inset-bottom),16px)]">
+            {many && <button type="button" onClick={() => onIndex((index - 1 + meal.photos.length) % meal.photos.length)} aria-label="Foto anterior"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/12"><ChevronLeft size={24} /></button>}
+            <p className="min-w-0 flex-1 text-[15px] text-white/85">{ph.note}</p>
+            {many && <button type="button" onClick={() => onIndex((index + 1) % meal.photos.length)} aria-label="Próxima foto"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/12"><ChevronRight size={24} /></button>}
+          </div>
+        )}
+      </div>
+    </dialog>
   )
 }

@@ -8,7 +8,7 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 
 | Livre (fazer e avisar) | Só com confirmação explícita |
 |---|---|
-| Cargas e carga-alvo (`fit carga`), remarcações e pulos pontuais (`fit move` / `skip` / `add`), registros de treino (`fit session`, `fit log-set`), comida (`fit meal`), peso e medidas (`fit body`), fotos (`fit photo`), creatina e água | Trocar, adicionar ou remover exercícios das fichas; mudar a grade base (`schedule_slots`); mudar metas (`goals`) |
+| Cargas e carga-alvo (`fit carga`), remarcações e pulos pontuais (`fit move` / `skip` / `add`), registros de treino (`fit session`, `fit log-set`), comida (`fit meal`), peso e medidas (`fit body`), fotos (`fit photo`, `fit meal-photo`), creatina e água | Trocar, adicionar ou remover exercícios das fichas; mudar a grade base (`schedule_slots`); mudar metas (`goals`) |
 
 - Toda escrita usa `source = 'bot'` (o `fit` já faz).
 - **Mudança relevante gera nota** (`fit note <tipo> "<texto>"`), que aparece na tela **Notas** do app:
@@ -29,6 +29,7 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 | foto/texto de refeição | `fit food <busca>` para achar códigos → `fit meal <refeição> "taco:3=150g" ...` (`--estimated` se veio de foto) |
 | "tomei creatina" | `fit creatine sim --g 5` |
 | fotos de progresso | `fit photo <arquivo> --pose frente` (remove EXIF, redimensiona, sobe no bucket privado) |
+| foto de refeição | `fit meal-photo <arquivo> <refeição> [--date d]` depois do `fit meal`, com o **mesmo nome** de refeição (bucket privado `meals`; aparece no feed da Nutrição) |
 | "como estou indo?" | `fit evo` (+ `fit summary week`) |
 
 ## Refeições

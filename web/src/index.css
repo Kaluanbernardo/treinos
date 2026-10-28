@@ -122,6 +122,8 @@
 dialog.sheet[open] > div { animation: sheet-up 260ms var(--ease-out-expo); }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 dialog.sheet { max-height: 100dvh; }
+dialog.photo-view[open] { animation: photo-in 220ms var(--ease-out-expo); }
+@keyframes photo-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; animation-iteration-count: 1 !important; }

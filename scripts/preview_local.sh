@@ -11,6 +11,8 @@
 # Sessão: o JWT do dono fica em /tmp/fitlocal/user.jwt (grave em localStorage['sb-127-auth-token']).
 # PREVIEW_ACTIVE=1 (padrão) cria um treino de ficha em andamento hoje (séries feitas + 1 exercício pulado);
 # PREVIEW_ACTIVE=0 deixa o dia sem treino aberto (cartão "Iniciar treino" / "Registrar cargas").
+# PREVIEW_MEAL_PHOTO=<jpg> usa essa imagem como foto do café de exemplo (sem ela, um gradiente neutro);
+# as imagens ficam em /tmp/fitlocal/storage/meals e o preview_server.mjs as serve como signed URLs.
 # PostgREST: binário estático em $POSTGREST (padrão /tmp/pgrest_dl/postgrest, release v16 do GitHub).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,9 +51,25 @@ create or replace function auth.uid() returns uuid language sql stable as $f$
                          current_setting('request.jwt.claims', true)::json ->> 'sub'), '')::uuid
 $f$;
 -- extras de exemplo para as telas do dia (o sintético vai só até ontem): refeições de hoje + notas
-insert into public.food_logs (date, meal, description, grams, kcal, protein_g, carb_g, fat_g, estimated, source, note) values
-  (public.today_sp(), 'pré-treino', 'Banana com whey', 150, 230, 26, 30, 2, false, 'bot', 'synthetic'),
-  (public.today_sp(), 'almoço', 'Arroz, feijão e frango', 450, 720, 52, 85, 16, true, 'bot', 'synthetic');
+insert into public.food_logs (date, meal, description, grams, portion_label, portion_qty, kcal, protein_g, carb_g, fat_g, estimated, logged_at, source, note)
+select public.today_sp(), v.meal, v.descr, v.g, v.pl, v.pq, v.kcal, v.p, v.c, v.f, v.est,
+       (public.today_sp() + v.t) at time zone 'America/Sao_Paulo', 'bot', 'synthetic'
+from (values
+  ('cafe',       'Iogurte, natural',              200, null, null, 102, 8.2, 3.8, 6.0, true,  time '07:40'),
+  ('cafe',       'Chia (semente)',                 15, null, null,  73, 2.5, 6.3, 4.6, true,  time '07:40'),
+  ('cafe',       'Uva, Itália, crua',              60, null, null,  32, 0.4, 8.2, 0.1, true,  time '07:40'),
+  ('cafe',       'Mamão, Papaia, cru',             40, null, null,  16, 0.2, 4.2, 0.0, true,  time '07:40'),
+  ('cafe',       'Aveia, flocos, crua',            15, null, null,  59, 2.1, 10.0, 1.3, true, time '07:40'),
+  ('almoço',     'Arroz, integral, cozido',       150, null, null, 186, 3.9, 38.7, 1.5, false, time '12:30'),
+  ('almoço',     'Feijão, carioca, cozido',       140, '1 concha', 1, 106, 6.7, 19.0, 0.7, false, time '12:30'),
+  ('almoço',     'Frango, peito, sem pele, grelhado', 160, '1 filé', 1, 254, 51.2, 0.0, 4.0, false, time '12:30'),
+  ('almoço',     'Salada de folhas com azeite',    80, null, null,  70, 1.0, 2.5, 6.3, true,  time '12:30'),
+  ('pré-treino', 'Banana, prata, crua',            90, '1 unidade', 1, 88, 1.2, 23.4, 0.1, false, time '17:15'),
+  ('pré-treino', 'Whey protein',                   30, '1 scoop', 1, 120, 24.0, 3.0, 1.5, false, time '17:15')
+) v(meal, descr, g, pl, pq, kcal, p, c, f, est, t);
+insert into public.meal_photos (date, meal, path, thumb_path, source, created_at)
+values (public.today_sp(), 'cafe', 'exemplo/cafe.jpg', 'exemplo/cafe-thumb.jpg', 'bot',
+        (public.today_sp() + time '07:38') at time zone 'America/Sao_Paulo');
 insert into public.daily_checks (date, creatine, water_ml, source, note)
   values (public.today_sp(), false, 1500, 'bot', 'synthetic')
   on conflict (date) do update set water_ml = excluded.water_ml;
@@ -97,6 +115,18 @@ end $$;
 SQL
       echo "treino em andamento de exemplo criado (PREVIEW_ACTIVE=0 para desligar)"
     fi
+    mkdir -p "$L/storage/meals/exemplo"
+    python3 -I - "${PREVIEW_MEAL_PHOTO:-}" "$L/storage/meals/exemplo" <<'PY'
+import sys
+from PIL import Image, ImageOps
+src, out = sys.argv[1], sys.argv[2]
+if src:
+    im = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
+else:   # gradiente neutro, sem foto real
+    im = Image.linear_gradient("L").resize((1200, 1600)).convert("RGB")
+for name, size in (("cafe.jpg", 1600), ("cafe-thumb.jpg", 400)):
+    x = im.copy(); x.thumbnail((size, size)); x.save(f"{out}/{name}", "JPEG", quality=80)
+PY
     head -c 48 /dev/urandom | base64 | tr -d '\n/+=' >"$L/secret"; chmod 600 "$L/secret"
     cat >"$L/pgrest.conf" <<EOF
 db-uri = "postgres://authenticator:localonly@127.0.0.1:54329/fitness"

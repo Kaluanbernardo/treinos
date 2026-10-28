@@ -44,6 +44,8 @@ NUTRIÇÃO
         item = "<codigo|nome>=<qtd>"  qtd: 150g | 2 "colher de sopa" (ex.: "taco:3=150g", "taco:410=1 filé")
         item livre: "desc=Whey 1 scoop;g=30;kcal=120;p=24;c=3;f=1.5"
   fit meal-del <id>                                     apaga um item de refeição
+  fit meal-photo <arquivo> <refeicao> [--date d] [--note t]
+        foto da refeição (mesmo nome de food_logs.meal): sem EXIF, 1600 px + miniatura 400 px, bucket privado `meals`
   fit food-add <slug> "<nome>" <kcal> <prot> <carb> <gord> [--fiber x] [--portion "1 un=350"]
         alimento custom por 100 g (código custom:<slug>)
   fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
@@ -532,8 +534,8 @@ def service_key():
     return k
 
 
-def upload(path, data):
-    url = f"https://{REF}.supabase.co/storage/v1/object/progress/{urllib.parse.quote(path)}"
+def upload(path, data, bucket="progress"):
+    url = f"https://{REF}.supabase.co/storage/v1/object/{bucket}/{urllib.parse.quote(path)}"
     key = service_key()
     req = urllib.request.Request(url, data=data, method="POST", headers={
         "Authorization": "Bearer " + key, "apikey": key, "Content-Type": "image/jpeg", "x-upsert": "true",
@@ -544,17 +546,16 @@ def upload(path, data):
         sys.exit(f"erro {e.code} ao subir {path}: {e.read()[:200]!r}")
 
 
-def cmd_photo(a):
-    pos, o = opts(a, flags=("pose", "date", "nota"))
-    if len(pos) != 1 or o.get("pose") not in ("frente", "lado", "costas"):
-        sys.exit("uso: fit photo <arquivo> --pose frente|lado|costas [--date d] [--nota t]")
+def store_photo(file, stem, bucket):
+    """Remove EXIF, sobe <stem>.jpg (1600 px) e <stem>-thumb.jpg (400 px); devolve os dois caminhos."""
     try:
         from PIL import Image, ImageOps
     except ImportError:
         sys.exit("erro: Pillow não instalado (pip install pillow)")
-    import io, uuid
-    d = pdate(o.get("date"))
-    with Image.open(pos[0]) as im:
+    import io
+    if not os.path.isfile(file):
+        sys.exit(f"erro: arquivo não encontrado: {file}")
+    with Image.open(file) as im:
         im = ImageOps.exif_transpose(im).convert("RGB")   # aplica a rotação e descarta o EXIF (GPS, aparelho)
         full = im.copy()
         full.thumbnail((1600, 1600))
@@ -564,12 +565,37 @@ def cmd_photo(a):
         b = io.BytesIO()
         img.save(b, "JPEG", quality=q, optimize=True, progressive=True)   # sem exif=
         return b.getvalue()
-    stem = f"{d[:7]}/{d}-{o['pose']}-{uuid.uuid4().hex[:8]}"
-    upload(f"{stem}.jpg", jpeg(full, 82))
-    upload(f"{stem}-thumb.jpg", jpeg(thumb, 78))
+    upload(f"{stem}.jpg", jpeg(full, 82), bucket)
+    upload(f"{stem}-thumb.jpg", jpeg(thumb, 78), bucket)
+    return f"{stem}.jpg", f"{stem}-thumb.jpg"
+
+
+def cmd_photo(a):
+    pos, o = opts(a, flags=("pose", "date", "nota"))
+    if len(pos) != 1 or o.get("pose") not in ("frente", "lado", "costas"):
+        sys.exit("uso: fit photo <arquivo> --pose frente|lado|costas [--date d] [--nota t]")
+    import uuid
+    d = pdate(o.get("date"))
+    path, thumb = store_photo(pos[0], f"{d[:7]}/{d}-{o['pose']}-{uuid.uuid4().hex[:8]}", "progress")
     out = bot(f"insert into progress_photos (date, pose, path, thumb_path, nota, source) values ({lit(d)}, {lit(o['pose'])}, "
-              f"{lit(stem + '.jpg')}, {lit(stem + '-thumb.jpg')}, {lit(o.get('nota'))}, 'bot') returning id, date, pose, path")
+              f"{lit(path)}, {lit(thumb)}, {lit(o.get('nota'))}, 'bot') returning id, date, pose, path")
     show(out)
+
+
+def cmd_meal_photo(a):
+    pos, o = opts(a, flags=("date", "note"))
+    if len(pos) != 2 or not pos[1].strip():
+        sys.exit("uso: fit meal-photo <arquivo> <refeicao> [--date d] [--note t]")
+    import uuid
+    file, meal, d = pos[0], pos[1].strip(), pdate(o.get("date"))
+    slug = re.sub(r"[^a-z0-9]+", "-", norm(meal)).strip("-") or "refeicao"
+    path, thumb = store_photo(file, f"{d[:7]}/{d}-{slug}-{uuid.uuid4().hex[:8]}", "meals")
+    out = bot(f"insert into meal_photos (date, meal, path, thumb_path, note, source) values ({lit(d)}, {lit(meal)}, "
+              f"{lit(path)}, {lit(thumb)}, {lit(o.get('note'))}, 'bot') returning id, date, meal, path, thumb_path")
+    show(out)
+    n = bot(f"select count(*) as n from food_logs where date = {lit(d)} and meal = {lit(meal)}")[0]["n"]
+    if not n:
+        print(f"aviso: nenhum item em food_logs para '{meal}' em {d}; confira se o nome da refeição é o mesmo dos itens")
 
 
 # ---------------------------------------------------------------- nutrição
@@ -829,7 +855,7 @@ COMMANDS = {
     "today": cmd_today, "week": cmd_week, "evo": cmd_evo, "summary": cmd_summary, "day": cmd_day, "food": cmd_food,
     "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga, "target": cmd_target,
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
-    "meal-del": cmd_meal_del, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
+    "meal-del": cmd_meal_del, "meal-photo": cmd_meal_photo, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
     "water": cmd_water, "note": cmd_note, "videos": cmd_videos,
     "kcal": cmd_kcal, "kcal-del": cmd_kcal_del, "kcal-day": cmd_kcal_day, "perfil": cmd_perfil,
 }

@@ -280,6 +280,16 @@ export interface FoodLog {
   note: string | null
 }
 
+export interface MealPhoto {
+  id: string
+  created_at: string
+  date: string
+  meal: string
+  path: string
+  thumb_path: string | null
+  note: string | null
+}
+
 export interface BotNote {
   id: string
   created_at: string

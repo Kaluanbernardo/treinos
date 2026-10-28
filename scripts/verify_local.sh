@@ -167,7 +167,17 @@ expect_eq "reps_alvo: coluna nula por padrão" postgres - \
 expect_ok   "reps_alvo: bot ajusta alvo"  bot - "update template_exercises set reps_alvo = 8, carga_alvo = 40 where position = 1"
 if out="$(q bot - "update template_exercises set reps_alvo = 0 where position = 1")"; then fail "reps_alvo: 0 deveria falhar" "$out"
 elif grep -q reps_alvo_check <<<"$out"; then ok "reps_alvo: 0 recusado (check)"; else fail "reps_alvo: 0" "$out"; fi
-expect_eq "TACO: 597 alimentos"          bot - "select count(*) from foods where code like 'taco:%'" 597
+# fotos de refeição: bot grava/apaga, dono lê, outro e anon não veem nada
+MPHOTO="insert into meal_photos (date, meal, path, thumb_path, source) values (today_sp(), 'cafe', '2026-10/x.jpg', '2026-10/x-thumb.jpg', 'bot')"
+expect_ok   "bot: INSERT meal_photos"      bot - "$MPHOTO"
+expect_eq   "dono: lê meal_photos"         authenticated "$OWNER" "$MPHOTO; select count(*) from meal_photos where meal = 'cafe' and date = today_sp()" 1
+expect_eq   "outro: meal_photos invisível" authenticated "$OTHER" "select count(*) from meal_photos" 0
+expect_deny "outro: INSERT meal_photos bloqueado" authenticated "$OTHER" "$MPHOTO"
+expect_deny "anon: meal_photos negado"     anon - "select count(*) from meal_photos"
+expect_ok   "bot: DELETE meal_photos"      bot - "delete from meal_photos where date = '2000-01-01'"
+if out="$(q bot - "insert into meal_photos (meal, path) values ('  ', 'x.jpg')")"; then fail "meal_photos: refeição vazia deveria falhar" "$out"
+elif grep -q meal_photos_meal_check <<<"$out"; then ok "meal_photos: refeição vazia recusada (check)"; else fail "meal_photos: refeição vazia" "$out"; fi
+expect_eq "TACO: 597 alimentos"         bot - "select count(*) from foods where code like 'taco:%'" 597
 expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
 expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"
 expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1
