@@ -22,6 +22,17 @@ assistente (`fit kcal-day`) leem a mesma view.
   - Uma leitura do **dia inteiro** cobre todos os treinos do dia: nenhuma estimativa nesse dia.
   - `is_estimate` = o número do dia tem alguma parte estimada (o app mostra "estimado").
 
+## Passos (só exibição)
+
+`daily_checks.steps` (gravado com `fit steps`) aparece no Hoje e na quebra do dia da aba Calorias, com a
+referência de 10 000 passos. **Não entra no gasto:** a rotina continua basal × 0,20 (`activity_factor` 1,20).
+
+Ideia futura, ainda não implementada: trocar o fator fixo por NEAT a partir dos passos (ordem de grandeza
+~0,04–0,05 kcal por passo para ~94 kg). Antes de fazer isso: (1) decidir o que acontece com o fator 1,20, que
+já cobre digestão e movimento mínimo, para não contar duas vezes; (2) descontar os passos feitos durante os
+treinos, que já entram em exercício (relógio ou MET); (3) ter algumas semanas de passos registrados para
+comparar com a tendência de peso antes de mexer no número.
+
 ## Saldo = comida − gasto
 
 `balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. A meta
@@ -33,6 +44,7 @@ assistente (`fit kcal-day`) leem a mesma view.
 scripts/fit kcal 347 --session efc6ec36      # kcal ativas de um treino (upsert)
 scripts/fit kcal 520 --date ontem            # total ativo do dia, sem sessão
 scripts/fit kcal-day [data]                  # quebra do dia
+scripts/fit steps 8432 --date ontem          # passos do dia (só exibição)
 scripts/fit perfil --altura 178 --nascimento 1990-05-01 --sexo M   # só com dados ditos pelo Kaluan
 FIT_ROLLBACK=1 scripts/fit kcal 300 --date hoje                     # testa sem gravar
 ```

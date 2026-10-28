@@ -168,6 +168,16 @@ expect_ok   "reps_alvo: bot ajusta alvo"  bot - "update template_exercises set r
 if out="$(q bot - "update template_exercises set reps_alvo = 0 where position = 1")"; then fail "reps_alvo: 0 deveria falhar" "$out"
 elif grep -q reps_alvo_check <<<"$out"; then ok "reps_alvo: 0 recusado (check)"; else fail "reps_alvo: 0" "$out"; fi
 # fotos de refeição: bot grava/apaga, dono lê, outro e anon não veem nada
+expect_eq   "steps: coluna nula, só exibição" postgres - \
+  "select is_nullable from information_schema.columns where table_name = 'daily_checks' and column_name = 'steps'" "YES"
+STEPS="insert into daily_checks (date, steps, source) values (today_sp(), 8432, 'bot') on conflict (date) do update set steps = excluded.steps, source = 'bot'"
+expect_eq   "steps: bot faz upsert"        bot - "$STEPS; $STEPS; select steps from daily_checks where date = today_sp()" 8432
+expect_eq   "steps: dono lê"               authenticated "$OWNER" "$STEPS; select steps from daily_checks where date = today_sp()" 8432
+expect_eq   "steps: gasto não muda"        postgres - \
+  "$PROFILE_SET; create temp table e0 as select out_kcal from v_energy_daily where date = today_sp(); update daily_checks set steps = 30000 where date = today_sp(); select out_kcal is not null and out_kcal = (select out_kcal from e0) from v_energy_daily where date = today_sp()" t
+if out="$(q bot - "insert into daily_checks (date, steps, source) values (today_sp(), -1, 'bot')")"; then fail "steps: negativo deveria falhar" "$out"
+elif grep -q daily_checks_steps_check <<<"$out"; then ok "steps: negativo recusado (check)"; else fail "steps: negativo" "$out"; fi
+
 MPHOTO="insert into meal_photos (date, meal, path, thumb_path, source) values (today_sp(), 'cafe', '2026-10/x.jpg', '2026-10/x-thumb.jpg', 'bot')"
 expect_ok   "bot: INSERT meal_photos"      bot - "$MPHOTO"
 expect_eq   "dono: lê meal_photos"         authenticated "$OWNER" "$MPHOTO; select count(*) from meal_photos where meal = 'cafe' and date = today_sp()" 1

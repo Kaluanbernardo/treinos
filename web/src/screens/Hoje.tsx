@@ -3,7 +3,7 @@ import {
   Ban, Check, ChevronRight, Clock, Dumbbell, Flame, Hourglass, Moon, NotebookText, PencilLine, Play, SlidersHorizontal, Timer, Trophy, X,
 } from 'lucide-react'
 import {
-  useActiveSession, useBodyMetrics, useDailyNutrition, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
+  useActiveSession, useBodyMetrics, useDailyNutrition, useDailySteps, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
   useNutritionTargets, usePrs, useRecomposition, useStartSession, useStreaks, useTemplates, useToday, useToggleCreatine, useWeek,
   useWeightTrend,
 } from '../lib/api'
@@ -17,6 +17,7 @@ import { ModalityDot } from '../components/modality'
 import { SummaryCard } from '../components/SummaryCard'
 import { FichaSheet } from '../components/FichaSheet'
 import { CreatineButton } from './Nutricao'
+import { StepsStat } from '../components/Steps'
 import { Big, DateTile, Delta, Rings, Spark, WeekStrip } from '../components/viz'
 
 const LOGGED = new Set(['feito', 'parcial', 'faltou'])
@@ -350,6 +351,7 @@ function DiaCard() {
   const targets = useNutritionTargets()
   const streaks = useStreaks()
   const toggle = useToggleCreatine()
+  const steps = useDailySteps(2)
   const date = todaySP()
   if (daily.isPending || targets.isPending || streaks.isPending) return <Skeleton className="h-52" />
   const d = daily.data?.find((x) => x.date === date)
@@ -388,6 +390,16 @@ function DiaCard() {
           ))}
         </ul>
       </div>
+      {steps.isSuccess && (() => {
+        const yest = steps.data.get(addDays(date, -1))
+        return (
+          <button type="button" onClick={() => go('calorias')}
+            className="mt-4 block min-h-12 w-full border-t border-line pt-3 text-left">
+            <StepsStat steps={steps.data.get(date)}
+              hint={yest != null ? `Sem leitura hoje · ontem ${intFmt(yest)}` : 'Sem leitura hoje. Mande os passos no chat.'} />
+          </button>
+        )
+      })()}
       <div className="mt-4">
         <CreatineButton on={creatine} onToggle={() => {
           haptic(15)

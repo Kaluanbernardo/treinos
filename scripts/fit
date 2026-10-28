@@ -51,6 +51,7 @@ NUTRIÇÃO
   fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
   fit creatine [sim|nao] [--g 5] [--date d]             check de creatina
   fit water <ml> [--date d]                             água do dia
+  fit steps <n> [--date d]                              passos do dia (só exibição; não mudam o gasto)
 
 CALORIAS (gasto × consumo; regra em docs/calorias.md)
   fit kcal <kcal> [--session <id>|--date d] [--note t]  kcal ATIVAS do relógio (source relogio); por sessão = upsert
@@ -733,6 +734,21 @@ def cmd_water(a):
              f"on conflict (date) do update set water_ml = excluded.water_ml, source = 'bot' returning date, water_ml"))
 
 
+def cmd_steps(a):
+    pos, o = opts(a, flags=("date",))
+    if len(pos) != 1:
+        sys.exit("uso: fit steps <n> [--date d]")
+    raw = re.sub(r"[.\s_]", "", pos[0])  # pt-BR: "8.432" = 8432 passos
+    if not raw.isdigit():
+        sys.exit(f"erro: passos inválido '{pos[0]}' (inteiro, ex.: 8432 ou 8.432)")
+    n = int(raw)
+    if not 0 <= n < 200000:
+        sys.exit("erro: passos fora da faixa (0–199999)")
+    d = pdate(o.get("date"))
+    show(bot(f"insert into daily_checks (date, steps, source) values ({lit(d)}, {n}, 'bot') "
+             f"on conflict (date) do update set steps = excluded.steps, source = 'bot' returning date, steps"))
+
+
 # ---------------------------------------------------------------- calorias
 def cmd_kcal(a):
     pos, o = opts(a, flags=("session", "date", "note"))
@@ -856,7 +872,7 @@ COMMANDS = {
     "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga, "target": cmd_target,
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
     "meal-del": cmd_meal_del, "meal-photo": cmd_meal_photo, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
-    "water": cmd_water, "note": cmd_note, "videos": cmd_videos,
+    "water": cmd_water, "steps": cmd_steps, "note": cmd_note, "videos": cmd_videos,
     "kcal": cmd_kcal, "kcal-del": cmd_kcal_del, "kcal-day": cmd_kcal_day, "perfil": cmd_perfil,
 }
 

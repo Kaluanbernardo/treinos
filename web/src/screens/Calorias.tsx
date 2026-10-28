@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, MessageCircle, UserRound, Watch } from 'lucide-react'
-import { useEnergyDaily, useProfile } from '../lib/api'
+import { useDailySteps, useEnergyDaily, useProfile } from '../lib/api'
 import type { EnergyDay, Profile } from '../lib/types'
 import { addDays, capitalize, dm, intFmt, longDay, num, todaySP, wdShort } from '../lib/format'
 import { go } from '../lib/router'
 import { Badge, Button, Card, CardHead, Collecting, ErrorState, IconButton, Segmented, Skeleton } from '../components/ui'
 import { Big } from '../components/viz'
 import { BalanceBars } from '../components/charts'
+import { StepsStat } from '../components/Steps'
 
 /** Gasto (basal + rotina + exercício) × comida. Regra única em v_energy_daily / docs/calorias.md. */
 
@@ -31,6 +32,7 @@ export function Calorias() {
   const [period, setPeriod] = useState<'7' | '30'>('7')
   const energy = useEnergyDaily(60)
   const profile = useProfile()
+  const steps = useDailySteps(60)
   const rows = energy.data ?? []
   const day = rows.find((r) => r.date === date) ?? null
   const missing = profile.data !== undefined ? missingFromProfile(profile.data) : []
@@ -56,7 +58,8 @@ export function Calorias() {
         <><Skeleton className="h-96" /><Skeleton className="h-72" /></>
       ) : (
         <>
-          <DayCard day={day} isToday={date === today} missing={missing} />
+          <DayCard day={day} isToday={date === today} missing={missing}
+            steps={steps.isSuccess ? steps.data.get(date) ?? null : undefined} />
           {missing.length > 0 && <ProfileMissing missing={missing} />}
           <BalanceCard rows={rows} period={period} setPeriod={setPeriod} selected={date} onPick={setDate} hasBmr={missing.length === 0} />
           <DaysList rows={rows} period={Number(period)} selected={date} onPick={(d) => { setDate(d); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
@@ -67,7 +70,8 @@ export function Calorias() {
 }
 
 // ---------------------------------------------------------------- dia
-function DayCard({ day, isToday, missing }: { day: EnergyDay | null; isToday: boolean; missing: string[] }) {
+/** `steps`: undefined = não carregou (ou coluna ainda não existe) → bloco some; null = sem leitura no dia. */
+function DayCard({ day, isToday, missing, steps }: { day: EnergyDay | null; isToday: boolean; missing: string[]; steps?: number | null }) {
   const bmr = day?.bmr_kcal ?? null
   const life = day?.daily_life_kcal ?? 0
   const ex = day?.exercise_kcal ?? 0
@@ -122,6 +126,13 @@ function DayCard({ day, isToday, missing }: { day: EnergyDay | null; isToday: bo
         <Stat color={C.food} label="Comida" value={day?.food_logged ? intFmt(food) : '—'}
           sub={day?.food_has_estimated ? 'com estimativa' : day?.food_logged ? 'registrada no chat' : 'nada ainda'} />
       </dl>
+
+      {steps !== undefined && (
+        <div className="mt-4 border-t border-line pt-4">
+          <StepsStat steps={steps} hint={isToday ? 'Sem leitura hoje. Mande os passos no chat.' : 'Sem leitura neste dia.'} />
+          <p className="mt-2 text-[13px] text-muted">Só acompanhamento: passos não mudam o gasto (a rotina é um fator sobre o basal).</p>
+        </div>
+      )}
     </Card>
   )
 }

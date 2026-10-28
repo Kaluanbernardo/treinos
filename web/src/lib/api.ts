@@ -376,6 +376,18 @@ export const useEnergyDaily = (days = 60) =>
       rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', addDays(todaySP(), -(days - 1))).order('date')),
   })
 
+/** Passos por dia (daily_checks.steps, via `fit steps`). Só exibição: não entram no gasto. */
+export const useDailySteps = (days = 60) =>
+  useQuery({
+    queryKey: ['daily_steps', days],
+    queryFn: async () => {
+      const list = await rows<{ date: string; steps: number }>(
+        db().from('daily_checks').select('date, steps').not('steps', 'is', null).gte('date', addDays(todaySP(), -(days - 1))).order('date'),
+      )
+      return new Map(list.map((r) => [r.date, r.steps]))
+    },
+  })
+
 export const useProfile = () =>
   useQuery({ queryKey: ['profile'], queryFn: () => one<Profile>(db().from('profile').select('id, height_cm, birth_date, sex, activity_factor').limit(1)) })
 

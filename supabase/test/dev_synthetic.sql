@@ -83,8 +83,9 @@ cross join (values
 ) m(meal, descr, g, kcal, p, c, f, est)
 where i % 7 <> 3;
 
-insert into public.daily_checks (date, creatine, creatine_g, water_ml, source, note)
-select public.today_sp() - 56 + i, i % 5 <> 0, case when i % 5 <> 0 then 5 end, 3000, 'bot', 'synthetic'
+insert into public.daily_checks (date, creatine, creatine_g, water_ml, steps, source, note)
+select public.today_sp() - 56 + i, i % 5 <> 0, case when i % 5 <> 0 then 5 end, 3000,
+       case when i % 6 <> 2 then 4000 + (i * 1373) % 9000 end, 'bot', 'synthetic'
 from generate_series(0, 55) i;
 
 update public.goals set kcal_target = 2200;

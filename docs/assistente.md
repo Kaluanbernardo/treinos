@@ -28,6 +28,7 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 | "cintura 88, braço 37" | `fit body --cintura 88 --braco 37` |
 | foto/texto de refeição | `fit food <busca>` para achar códigos → `fit meal <refeição> "taco:3=150g" ...` (`--estimated` se veio de foto) |
 | "tomei creatina" | `fit creatine sim --g 5` |
+| "8.432 passos ontem" / print do relógio | `fit steps 8432 --date ontem` (só exibição; não muda o gasto) |
 | fotos de progresso | `fit photo <arquivo> --pose frente` (remove EXIF, redimensiona, sobe no bucket privado) |
 | foto de refeição | `fit meal-photo <arquivo> <refeição> [--date d]` depois do `fit meal`, com o **mesmo nome** de refeição (bucket privado `meals`; aparece no feed da Nutrição) |
 | "como estou indo?" | `fit evo` (+ `fit summary week`) |
