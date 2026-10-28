@@ -48,6 +48,13 @@ NUTRIÇÃO
   fit creatine [sim|nao] [--g 5] [--date d]             check de creatina
   fit water <ml> [--date d]                             água do dia
 
+CALORIAS (gasto × consumo; regra em docs/calorias.md)
+  fit kcal <kcal> [--session <id>|--date d] [--note t]  kcal ATIVAS do relógio (source relogio); por sessão = upsert
+  fit kcal-del <id>                                     apaga uma leitura do relógio
+  fit kcal-day [data]                                   basal + rotina + exercício × comida = saldo do dia
+  fit perfil [--altura cm] [--nascimento AAAA-MM-DD] [--sexo M|F] [--fator 1.2]
+        dados do basal (Mifflin-St Jeor); sem opções mostra o perfil. Só com valores informados pelo Kaluan.
+
 NOTAS
   fit note <nota|decisao|carga|remarcacao|alerta|resumo> "<texto>"
 
@@ -663,6 +670,98 @@ def cmd_water(a):
              f"on conflict (date) do update set water_ml = excluded.water_ml, source = 'bot' returning date, water_ml"))
 
 
+# ---------------------------------------------------------------- calorias
+def cmd_kcal(a):
+    pos, o = opts(a, flags=("session", "date", "note"))
+    if len(pos) != 1 or ("session" in o and "date" in o):
+        sys.exit("uso: fit kcal <kcal> [--session <id>|--date d] [--note t]")
+    kcal = int(round(pnum(pos[0], "kcal")))
+    if not 0 < kcal < 5000:
+        sys.exit("erro: kcal fora da faixa (1–4999)")
+    if "session" in o:
+        s = bot(f"select id, date, title, status from v_sessions where id::text like {lit(o['session'] + '%')}")
+        if len(s) != 1:
+            sys.exit(f"erro: {len(s)} sessões com esse id (use um id mais longo)" if s else "erro: sessão não encontrada")
+        s = s[0]
+        out = bot(f"insert into exercise_kcal (date, session_id, kcal, note, source) values ({lit(s['date'])}, {lit(s['id'])}, {kcal}, "
+                  f"{lit(o.get('note'))}, 'relogio') on conflict (session_id) where session_id is not null do update set "
+                  f"kcal = excluded.kcal, date = excluded.date, note = coalesce(excluded.note, exercise_kcal.note) "
+                  f"returning left(id::text, 8) as id, date, kcal, source")
+        print(f"{s['title']} ({s['date']}, {s['status']}): {kcal} kcal do relógio")
+    else:
+        d = pdate(o.get("date"))
+        out = bot(f"insert into exercise_kcal (date, kcal, note, source) values ({lit(d)}, {kcal}, {lit(o.get('note'))}, 'relogio') "
+                  f"returning left(id::text, 8) as id, date, kcal, source")
+        print(f"{d}: {kcal} kcal do relógio (dia inteiro: substitui as estimativas das sessões desse dia)")
+    table(out)
+    if os.environ.get("FIT_ROLLBACK"):
+        print("(FIT_ROLLBACK: nada gravado)")
+    else:
+        cmd_kcal_day([out[0]["date"]])
+
+
+def cmd_kcal_del(a):
+    if len(a) != 1:
+        sys.exit("uso: fit kcal-del <id (8+ caracteres)>")
+    out = bot(f"delete from exercise_kcal where id::text like {lit(a[0] + '%')} returning date, kcal, session_id")
+    if len(out) != 1:
+        sys.exit(f"erro: {len(out)} leituras apagadas (use um id mais longo)" if out else "erro: id não encontrado")
+    show(out)
+
+
+def cmd_kcal_day(a):
+    d = pdate(a[0] if a else None)
+    r = bot(f"select * from v_energy_daily where date = {lit(d)}")
+    if not r:
+        sys.exit(f"{d}: sem dados (nenhum peso, refeição, treino ou kcal até essa data)")
+    r = r[0]
+    n = lambda v: "–" if v is None else f"{round(float(v)):,}".replace(",", ".")
+    w = bot(f"select left(e.id::text, 8) as id, e.kcal, e.source, coalesce(s.title, 'dia inteiro') as sessao "
+            f"from exercise_kcal e left join v_sessions s on s.id = e.session_id where e.date = {lit(d)} order by e.created_at")
+    print(f"# {d}")
+    if r["bmr_kcal"] is None:
+        print(f"basal        –   (falta: {', '.join(r['bmr_missing'])}; Configurações no app ou fit perfil)")
+    else:
+        print(f"basal        {n(r['bmr_kcal'])} kcal  (Mifflin-St Jeor · {r['weight_kg']} kg · {r['height_cm']} cm · {r['age_years']} anos · {r['sex']})")
+        print(f"rotina       {n(r['daily_life_kcal'])} kcal  (basal × {float(r['activity_factor']) - 1:.2f})")
+    ex = f"exercício    {n(r['exercise_kcal'])} kcal"
+    parts = []
+    if r["exercise_watch_kcal"]:
+        parts.append(f"relógio {n(r['exercise_watch_kcal'])}")
+    if r["is_estimate"]:
+        parts.append(f"estimativa {n(r['exercise_est_kcal'])} ({r['n_sessions_estimated']} sessão(ões) sem relógio)")
+    print(ex + (f"  ({' + '.join(parts)})" if parts else ""))
+    for x in w:
+        print(f"  · {x['sessao']}: {x['kcal']} kcal ({x['source']}, id {x['id']})")
+    print(f"gasto        {n(r['out_kcal'])} kcal")
+    print(f"comida       {n(r['food_kcal'])} kcal" + ("" if r["food_logged"] else "  (nada registrado)") + ("  (tem estimativa)" if r["food_has_estimated"] else ""))
+    if r["balance_kcal"] is not None:
+        b = int(r["balance_kcal"])
+        print(f"saldo        {'+' if b > 0 else ''}{n(b)} kcal  ({'déficit' if b < 0 else 'superávit' if b > 0 else 'empate'}; meta {r['target_balance_kcal']})")
+    else:
+        print("saldo        –   (" + ("sem basal" if r["bmr_kcal"] is None else "sem refeições no dia") + ")")
+
+
+def cmd_perfil(a):
+    _, o = opts(a, flags=("altura", "nascimento", "sexo", "fator"))
+    sets = []
+    if "altura" in o:
+        sets.append(f"height_cm = {pnum(o['altura'], 'altura')}")
+    if "nascimento" in o:
+        sets.append(f"birth_date = {lit(pdate(o['nascimento']))}")
+    if "sexo" in o:
+        sx = o["sexo"].upper()[:1]
+        if sx not in ("M", "F"):
+            sys.exit("erro: --sexo M ou F")
+        sets.append(f"sex = {lit(sx)}")
+    if "fator" in o:
+        sets.append(f"activity_factor = {pnum(o['fator'], 'fator')}")
+    if sets:
+        bot(f"update profile set {', '.join(sets)}, source = 'bot'")
+        note("decisao", "Perfil do basal atualizado: " + ", ".join(f"{k} {v}" for k, v in o.items()) + ".", "profile")
+    table(bot("select height_cm as altura_cm, birth_date as nascimento, sex as sexo, activity_factor as fator from profile"))
+
+
 def cmd_videos(a):
     """Confere cada exercises.video_url pelo oEmbed do YouTube (HTTP 200 = ok)."""
     bad = 0
@@ -695,6 +794,7 @@ COMMANDS = {
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
     "meal-del": cmd_meal_del, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
     "water": cmd_water, "note": cmd_note, "videos": cmd_videos,
+    "kcal": cmd_kcal, "kcal-del": cmd_kcal_del, "kcal-day": cmd_kcal_day, "perfil": cmd_perfil,
 }
 
 

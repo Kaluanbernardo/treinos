@@ -87,7 +87,8 @@ psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/dev_syn
 
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
-       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets v_muscle_volume_weekly)
+       v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets v_muscle_volume_weekly
+       v_energy_daily)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"
@@ -122,7 +123,45 @@ expect_ok   "bot: upsert session_exercise_status" bot - "$SKIP_SEQ"
 expect_deny "anon: session_exercise_status negado" anon - "select count(*) from session_exercise_status"
 expect_deny "outro: INSERT session_exercise_status bloqueado" authenticated "$OTHER" \
   "insert into session_exercise_status (session_id, exercise_id) values (gen_random_uuid(), gen_random_uuid())"
-expect_eq "TACO: 597 alimentos"           bot - "select count(*) from foods where code like 'taco:%'" 597
+# calorias: perfil vazio → basal NULL; com perfil → Mifflin-St Jeor; relógio substitui a estimativa (tudo em rollback)
+expect_eq "perfil: 1 linha, altura/nascimento/sexo NULL, fator 1.20" postgres - \
+  "select count(*) || ' ' || bool_and(height_cm is null and birth_date is null and sex is null) || ' ' || max(activity_factor) from profile" "1 true 1.20"
+expect_eq "energia: sem perfil, basal/gasto/saldo NULL e o que falta listado" bot - \
+  "select count(*) filter (where bmr_kcal is not null or out_kcal is not null or balance_kcal is not null) || ' ' || (select array_to_string(bmr_missing, ',') from v_energy_daily order by date desc limit 1) from v_energy_daily" \
+  "0 altura,data de nascimento,sexo"
+expect_eq "energia: um dia por data, do 1º dado até hoje" bot - \
+  "select (count(*) = count(distinct date) and max(date) = today_sp())::int from v_energy_daily" 1
+PROFILE_SET="update profile set height_cm = 180, birth_date = today_sp() - interval '30 years', sex = 'M'"
+expect_eq "energia: Mifflin (10·kg + 6,25·cm − 5·idade + 5) com o último peso" bot - \
+  "$PROFILE_SET; select count(*) from v_energy_daily where bmr_kcal <> round(10 * weight_kg + 6.25 * 180 - 5 * age_years + 5) or out_kcal <> bmr_kcal + daily_life_kcal + exercise_kcal" "0"
+expect_eq "energia: hoje, 30 anos e peso = última pesagem" bot - \
+  "$PROFILE_SET; select age_years || ' ' || (weight_kg = (select round(peso_kg, 1) from body_metrics where peso_kg is not null and date <= today_sp() order by date desc limit 1)) from v_energy_daily where date = today_sp()" "30 true"
+expect_eq "energia: sessões feitas sem relógio viram estimativa (MET)" bot - \
+  "select (count(*) > 0 and bool_and(exercise_est_kcal > 0))::int from v_energy_daily where is_estimate" 1
+KCAL_SEQ="with s as (select id, date from sessions where status = 'feito' and template_id is not null order by date desc limit 1)
+  insert into exercise_kcal (date, session_id, kcal) select date, id, 347 from s"
+expect_eq "energia: leitura do relógio substitui a estimativa daquela sessão" bot - \
+  "$KCAL_SEQ; select (e.exercise_watch_kcal = 347 and e.n_sessions_estimated = (select count(*) from sessions s where s.date = e.date and s.status in ('feito','parcial')) - 1)::int from v_energy_daily e where e.date = (select date from exercise_kcal limit 1)" 1
+expect_eq "energia: total do dia sem sessão zera a estimativa" bot - \
+  "insert into exercise_kcal (date, kcal) select date, 500 from v_energy_daily where is_estimate order by date desc limit 1; select exercise_est_kcal || ' ' || exercise_kcal || ' ' || is_estimate from v_energy_daily where date = (select date from exercise_kcal order by created_at desc limit 1)" "0 500 false"
+expect_eq "energia: saldo = comida − gasto (só com comida registrada)" bot - \
+  "$PROFILE_SET; select count(*) from v_energy_daily where (food_logged and balance_kcal <> food_kcal - out_kcal) or (not food_logged and balance_kcal is not null)" "0"
+expect_eq "kcal relógio: source padrão relogio, 1 leitura por sessão" bot - \
+  "$KCAL_SEQ; select source from exercise_kcal" "relogio"
+if out="$(q bot - "$KCAL_SEQ; $KCAL_SEQ")"; then fail "kcal relógio: 2ª leitura da mesma sessão deveria falhar" "$out"
+elif grep -q 'exercise_kcal_session_uidx' <<<"$out"; then ok "kcal relógio: 2ª leitura da mesma sessão sem upsert falha (índice único)"
+else fail "kcal relógio: 2ª leitura" "$out"; fi
+expect_ok   "kcal relógio: upsert por sessão" bot - \
+  "$KCAL_SEQ; $KCAL_SEQ on conflict (session_id) where session_id is not null do update set kcal = excluded.kcal"
+expect_ok   "bot: DELETE exercise_kcal"  bot - "delete from exercise_kcal where date = '2000-01-01'"
+expect_ok   "dono: UPDATE profile"       authenticated "$OWNER" "update profile set height_cm = 180"
+expect_eq   "outro: profile invisível"   authenticated "$OTHER" "select count(*) from profile" 0
+expect_deny "outro: INSERT exercise_kcal bloqueado" authenticated "$OTHER" "insert into exercise_kcal (kcal) values (100)"
+expect_deny "anon: profile negado"       anon - "select count(*) from profile"
+expect_deny "anon: exercise_kcal negado" anon - "select count(*) from exercise_kcal"
+expect_deny "anon: v_energy_daily negado" anon - "select count(*) from v_energy_daily"
+expect_deny "bot: DELETE profile negado" bot - "delete from profile"
+expect_eq "TACO: 597 alimentos"          bot - "select count(*) from foods where code like 'taco:%'" 597
 expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
 expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"
 expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1

@@ -12,6 +12,7 @@ import { Sessao } from './screens/Sessao'
 import { Evolucao } from './screens/Evolucao'
 import { Nutricao } from './screens/Nutricao'
 import { Agenda } from './screens/Agenda'
+import { Calorias } from './screens/Calorias'
 import { Notas } from './screens/Notas'
 import { Config } from './screens/Config'
 
@@ -35,7 +36,7 @@ export default function App() {
   if (!session) return <Login />
 
   const fullscreen = route.name === 'sessao'
-  const tab: Tab | null = ['hoje', 'treino', 'evolucao', 'nutricao', 'agenda'].includes(route.name) ? (route.name as Tab) : null
+  const tab: Tab | null = ['hoje', 'treino', 'evolucao', 'nutricao', 'calorias'].includes(route.name) ? (route.name as Tab) : null
 
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-lg flex-col">
@@ -48,6 +49,7 @@ export default function App() {
         {route.name === 'evolucao' && <Evolucao />}
         {route.name === 'nutricao' && <Nutricao />}
         {route.name === 'agenda' && <Agenda />}
+        {route.name === 'calorias' && <Calorias />}
         {route.name === 'notas' && <Notas email={session.user.email ?? ''} />}
         {route.name === 'config' && <Config email={session.user.email ?? ''} />}
       </main>

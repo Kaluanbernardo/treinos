@@ -39,6 +39,10 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 4. Responda com itens, kcal, proteína e quanto falta no dia (o `fit meal` imprime o total do dia vs metas).
 5. Erro de porção em foto é de ~20–40 %: priorize corrigir os itens de mais kcal (arroz, carne, óleo).
 
+**Calorias do relógio:** quando o Kaluan mandar as kcal de um treino, use as **ativas** (não as totais) com
+`fit kcal <kcal> --session <id>` (ou `--date` para o total ativo do dia) e responda com `fit kcal-day`. Altura,
+nascimento e sexo só com valores ditos por ele (`fit perfil` ou Configurações no app). Regra: `docs/calorias.md`.
+
 `goals.kcal_target` ainda está vazio: defina quando houver base para estimar o TDEE
 (`fit admin-sql "update goals set kcal_target = ..."` só com confirmação, e registre `decisao`).
 

@@ -135,3 +135,72 @@ export function Bars({ data, color, unit, height = 150, ariaLabel, digits = 0, b
     </figure>
   )
 }
+
+export interface BalancePoint { date: string; label: string; value: number | null; food?: number | null; out?: number | null }
+
+/**
+ * Saldo diário (comida − gasto) em barras divergentes a partir do zero: abaixo = déficit, acima = superávit.
+ * Meta tracejada; o dia selecionado na cor cheia, os demais a 45 %. Dia sem saldo fica sem barra.
+ */
+export function BalanceBars({ data, color, target, selected, height = 180, ariaLabel, onPick }: {
+  data: BalancePoint[]; color: string; target?: number | null; selected?: string; height?: number; ariaLabel: string
+  onPick?: (date: string) => void
+}) {
+  const vals = data.map((d) => d.value).filter((v): v is number => v != null)
+  const lo = Math.min(0, target ?? 0, ...vals)
+  const hi = Math.max(0, ...vals)
+  const step = [250, 500, 1000, 2000].find((s) => (hi - lo) / s <= 4) ?? 2500
+  const domain: [number, number] = [Math.floor((lo - 50) / step) * step, Math.ceil((hi + (hi > 0 ? 50 : 0)) / step) * step]
+  const ticks = Array.from({ length: Math.round((domain[1] - domain[0]) / step) + 1 }, (_, i) => domain[0] + i * step)
+  const sgn = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${num(Math.abs(v), 0)}`
+  return (
+    <figure aria-label={ariaLabel} className="-mx-1">
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={data.length > 14 ? '18%' : '28%'}
+            onClick={(s: { activeLabel?: string | number }) => {
+              const hit = data.find((d) => d.label === s?.activeLabel)
+              if (hit && onPick) onPick(hit.date)
+            }}>
+            <CartesianGrid vertical={false} stroke={GRID} />
+            <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={10} />
+            <YAxis {...AXIS} width={48} domain={domain} ticks={ticks} tickFormatter={(v: number) => sgn(v)} />
+            <ReferenceLine y={0} stroke="var(--color-muted)" strokeOpacity={0.6} />
+            {target != null && (
+              <ReferenceLine y={target} stroke="var(--color-ok)" strokeDasharray="4 4" ifOverflow="extendDomain" />
+            )}
+            <Bar dataKey="value" animationDuration={500} cursor={onPick ? 'pointer' : undefined}
+              shape={(p: { x?: number; y?: number; width?: number; height?: number; payload?: BalancePoint }) => {
+                const { x = 0, width = 0 } = p
+                let { y = 0, height: h = 0 } = p
+                if (h < 0) { y += h; h = -h }   // valores negativos chegam com altura negativa
+                if (!h) return <g />
+                const r = Math.min(4, width / 2, h)
+                const down = (p.payload?.value ?? 0) < 0
+                const d = down
+                  ? `M${x},${y} V${y + h - r} Q${x},${y + h} ${x + r},${y + h} H${x + width - r} Q${x + width},${y + h} ${x + width},${y + h - r} V${y} Z`
+                  : `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + width - r} Q${x + width},${y} ${x + width},${y + r} V${y + h} Z`
+                return <path d={d} fill={color} fillOpacity={!selected || p.payload?.date === selected ? 1 : 0.45} />
+              }} />
+            <Tooltip
+              cursor={{ fill: 'var(--color-fg)', fillOpacity: 0.05 }}
+              content={(p: TooltipContentProps<ValueType, NameType>) => {
+                const row = p.payload?.[0]?.payload as BalancePoint | undefined
+                if (!p.active || !row) return null
+                return (
+                  <TipBox>
+                    <p className="text-muted">{dm(row.date)}</p>
+                    {row.value == null ? <p>sem saldo</p> : (
+                      <p><b className="tabular-nums">{sgn(row.value)} kcal</b> {row.value < 0 ? 'déficit' : row.value > 0 ? 'superávit' : ''}</p>
+                    )}
+                    {row.food != null && row.out != null && <p className="tabular-nums text-muted">{num(row.food, 0)} comida · {num(row.out, 0)} gasto</p>}
+                  </TipBox>
+                )
+              }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
+  )
+}

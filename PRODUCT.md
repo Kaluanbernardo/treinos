@@ -45,7 +45,7 @@ estimated 1RM), never by weight alone.
 
 ## Capabilities and Constraints
 
-- Five tabs: Hoje · Treino · Evolução · Nutrição · Agenda; Notas (assistant notes) and Config as header icons.
+- Five tabs: Hoje · Treino · Evolução · Nutrição · Calorias; Agenda opens from Hoje; Notas (assistant notes) and Config as header icons.
 - Evolution needs weeks of data. Early on, most blocks honestly say what data is still missing.
 - No multi-user, onboarding, settings, food search, or in-app photo upload (all out of scope by decision).
 - Progress photos are private (signed URLs, ~10 min) and never cached by the service worker.

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
-import { todaySP } from './format'
+import { addDays, todaySP } from './format'
 import type {
-  BodyMetric, BotNote, DailyNutrition, ExerciseSession, ExerciseStatus, FoodLog, MonthlySummary, MuscleVolumeWeek,
+  BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MonthlySummary, MuscleVolumeWeek,
   NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, Recomposition,
   SessionRow, SessionStatus, SetLog, Streak, Template, WeightPoint,
 } from './types'
@@ -357,6 +357,33 @@ export function useToggleCreatine() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['v_daily_nutrition'] })
       qc.invalidateQueries({ queryKey: ['v_weekly_summary'] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------- calorias
+/** Últimos `days` dias de v_energy_daily (basal + dia a dia + exercício × comida). */
+export const useEnergyDaily = (days = 60) =>
+  useQuery({
+    queryKey: ['v_energy_daily', days],
+    queryFn: () =>
+      rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', addDays(todaySP(), -(days - 1))).order('date')),
+  })
+
+export const useProfile = () =>
+  useQuery({ queryKey: ['profile'], queryFn: () => one<Profile>(db().from('profile').select('id, height_cm, birth_date, sex, activity_factor').limit(1)) })
+
+export function useSaveProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: Pick<Profile, 'id' | 'height_cm' | 'birth_date' | 'sex'>) => {
+      const { error } = await db().from('profile')
+        .update({ height_cm: v.height_cm, birth_date: v.birth_date, sex: v.sex, source: 'app' }).eq('id', v.id)
+      if (error) throw new Error(error.message)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['profile'] })
+      qc.invalidateQueries({ queryKey: ['v_energy_daily'] })
     },
   })
 }

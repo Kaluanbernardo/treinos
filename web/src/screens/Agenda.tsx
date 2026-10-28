@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Ban, CalendarClock, Check, ChevronLeft, ChevronRight, Clock, MessageCircle, Moon, X } from 'lucide-react'
+import { ArrowLeft, Ban, CalendarClock, Check, ChevronLeft, ChevronRight, Clock, MessageCircle, Moon, X } from 'lucide-react'
 import { usePlan, useTemplates } from '../lib/api'
 import type { PlanItem } from '../lib/types'
 import { addDays, capitalize, dm, hhmm, todaySP, wdShort, weekStart } from '../lib/format'
@@ -7,6 +7,7 @@ import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton } from '..
 import { Big, DateTile, WeekStrip } from '../components/viz'
 import { markOf, weekDays } from '../lib/week'
 import { MODALITY, ModalityDot } from '../components/modality'
+import { go } from '../lib/router'
 import { FichaDetail } from '../components/Ficha'
 
 export function Agenda() {
@@ -29,7 +30,10 @@ export function Agenda() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Agenda</h1>
+      <header className="flex items-center gap-1 pt-1">
+        <IconButton label="Voltar" onClick={() => (history.length > 1 ? history.back() : go('hoje'))}><ArrowLeft size={24} /></IconButton>
+        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Agenda</h1>
+      </header>
 
       <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Semana">
         <IconButton label="Semana anterior" onClick={() => setWs(addDays(ws, -7))}><ChevronLeft size={24} /></IconButton>

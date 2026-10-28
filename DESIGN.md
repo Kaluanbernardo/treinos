@@ -326,10 +326,13 @@ Tactile, heavy and bottom-weighted.
 - **Focus:** the border turns lime; inline stepper editing uses a 2px lime ring.
 
 ### Navigation
-Five tabs (Hoje, Treino, Evolução, Nutrição, Agenda) in a sticky bar: `bg` at 92% with backdrop blur and a top hairline. 64px targets, 22px icon over a 12px medium label. Active: the icon sits in a 56×32 `lime`/15 pill with a lime 2.4 stroke and the label turns `fg`; inactive is `muted`.
+Five tabs (Hoje, Treino, Evolução, Nutrição, Calorias) in a sticky bar. Agenda left the bar for Calorias and opens from Hoje (week strip, next activity, "Treinos na semana") with a back arrow: `bg` at 92% with backdrop blur and a top hairline. 64px targets, 22px icon over a 12px medium label. Active: the icon sits in a 56×32 `lime`/15 pill with a lime 2.4 stroke and the label turns `fg`; inactive is `muted`.
 
 ### Recomposition Triad (signature)
 Three equal cells (Peso · Cintura · Força) on an inset `bg`/60 panel with a 16px radius, a hairline ring and hairline dividers. Each cell: 13px label, then a drawn arrow (22–26px, 2.5 stroke) plus a word ("caindo / estável / subindo"), coloured `ok` when moving the good way, `warn` when moving the wrong way, `fg` when flat; then a 13px tabular delta. With no data, the cell shows an hourglass plus when the arrow will appear ("seta em 12/11", "sem pesagem"). It is the same component on Hoje and Evolução.
+
+### Calorias (in × out)
+Gasto = basal (Mifflin-St Jeor) + rotina (basal × 0,20) + exercício (watch active kcal, or a MET estimate); saldo = comida − gasto. Rule and the NEAT-factor choice: `docs/calorias.md`. Food keeps the `kcal` hue; expenditure is a neutral `fg` ramp (basal 30 %, rotina 15 %, exercício solid; estimated exercise is striped plus an "estimado" badge) so no other metric hue is borrowed. The hero is the day's saldo (44px, signed) with an arrow + word badge (déficit / superávit / déficit alto, never "alto" on the day still in progress) over two bars on one scale (Entrou / Saiu). The period chart is diverging bars from zero in `kcal` with the selected day full and the rest at 45 %, the target as a dashed `ok` line. Without height, birth date or sex the basal, gasto and saldo stay blank and a card sends to Configurações → Perfil (the only data-entry form in the app, by explicit request).
 
 ### PR Seal (signature)
 A lime 6px-radius tag with "PR" in 12px black weight and `bg` text. It stamps in (520ms scale + rotate, eased out) with a double haptic pulse the moment a confirmed set beats a record. Records elsewhere use a lime trophy icon.

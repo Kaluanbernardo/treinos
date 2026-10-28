@@ -1,14 +1,15 @@
-import { CalendarDays, Dumbbell, Home, PieChart, TrendingUp, type LucideIcon } from 'lucide-react'
+import { Dumbbell, Flame, Home, PieChart, TrendingUp, type LucideIcon } from 'lucide-react'
 import { go } from '../lib/router'
 
-export type Tab = 'hoje' | 'treino' | 'evolucao' | 'nutricao' | 'agenda'
+// Agenda saiu da barra (abre pelo Hoje: semana, próxima atividade e treinos na semana).
+export type Tab = 'hoje' | 'treino' | 'evolucao' | 'nutricao' | 'calorias'
 
 export const TABS: { id: Tab; label: string; Icon: LucideIcon }[] = [
   { id: 'hoje', label: 'Hoje', Icon: Home },
   { id: 'treino', label: 'Treino', Icon: Dumbbell },
   { id: 'evolucao', label: 'Evolução', Icon: TrendingUp },
   { id: 'nutricao', label: 'Nutrição', Icon: PieChart },
-  { id: 'agenda', label: 'Agenda', Icon: CalendarDays },
+  { id: 'calorias', label: 'Calorias', Icon: Flame },
 ]
 
 export function BottomNav({ tab }: { tab: Tab | null }) {

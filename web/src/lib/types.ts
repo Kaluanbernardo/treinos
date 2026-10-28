@@ -301,3 +301,35 @@ export interface MuscleVolumeWeek {
   n_sets: number
   volume_kg: number
 }
+
+/** Linha de v_energy_daily (regra em docs/calorias.md). Basal/gasto/saldo NULL sem perfil completo. */
+export interface EnergyDay {
+  date: string
+  weight_kg: number | null
+  height_cm: number | null
+  age_years: number | null
+  sex: 'M' | 'F' | null
+  activity_factor: number
+  bmr_kcal: number | null
+  daily_life_kcal: number | null
+  exercise_watch_kcal: number
+  exercise_est_kcal: number
+  exercise_kcal: number
+  is_estimate: boolean
+  n_sessions_estimated: number
+  food_kcal: number
+  food_logged: boolean
+  food_has_estimated: boolean
+  out_kcal: number | null
+  balance_kcal: number | null
+  target_balance_kcal: number | null
+  bmr_missing: string[]
+}
+
+export interface Profile {
+  id: string
+  height_cm: number | null
+  birth_date: string | null
+  sex: 'M' | 'F' | null
+  activity_factor: number
+}

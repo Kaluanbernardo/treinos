@@ -55,6 +55,12 @@ insert into public.food_logs (date, meal, description, grams, kcal, protein_g, c
 insert into public.daily_checks (date, creatine, water_ml, source, note)
   values (public.today_sp(), false, 1500, 'bot', 'synthetic')
   on conflict (date) do update set water_ml = excluded.water_ml;
+-- calorias de exemplo: perfil FICTÍCIO (só aqui, nunca no banco real) + kcal do relógio em parte das sessões
+update public.profile set height_cm = 180, birth_date = '1990-01-01', sex = 'M';
+insert into public.exercise_kcal (date, session_id, kcal, source, note)
+select s.date, s.id, 280 + (extract(doy from s.date)::int * 37) % 240, 'relogio', 'synthetic'
+from public.sessions s
+where s.status = 'feito' and s.date >= public.today_sp() - 30 and extract(isodow from s.date) in (1, 3, 5);
 insert into public.bot_notes (created_at, kind, text) values
   (now() - interval '2 hours', 'carga', 'Supino reto: 62,5 → 65 kg. Fechou 3×10 com RIR 2 nas duas últimas sessões.'),
   (now() - interval '5 hours', 'remarcacao', 'Inferiores A de terça foi para quarta 6h; terça virou Crossfit.'),

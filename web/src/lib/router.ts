@@ -8,6 +8,7 @@ export type Route =
   | { name: 'evolucao' }
   | { name: 'nutricao' }
   | { name: 'agenda' }
+  | { name: 'calorias' }
   | { name: 'notas' }
   | { name: 'config' }
 
@@ -23,6 +24,7 @@ export function parse(hash: string): Route {
     case 'evolucao':
     case 'nutricao':
     case 'agenda':
+    case 'calorias':
     case 'notas':
     case 'config':
       return { name }
