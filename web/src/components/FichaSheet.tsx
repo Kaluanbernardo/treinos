@@ -6,6 +6,7 @@ import {
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { ExerciseSession, PrevBest, SetLog, Template, TemplateExercise } from '../lib/types'
+import { suggest } from '../lib/target'
 import { kgFmt, todaySP } from '../lib/format'
 import { prFlagsFor } from '../lib/pr'
 import { sessionProgress } from '../lib/session'
@@ -214,11 +215,11 @@ function ExerciseLog({ te, sets, skipped, last, best, open, readOnly, onToggle, 
   const complete = !skipped && done >= te.sets
   const prFlags = prFlagsFor(sets, best)
 
+  // dentro da sessão vale a última série confirmada; antes dela, o alvo da ficha (ou a última sessão)
   const lastSet = sets[sets.length - 1]
-  const base: Draft = {
-    kg: show(lastSet?.kg ?? last?.top_kg ?? te.carga_alvo),
-    reps: show(lastSet?.reps ?? last?.top_reps ?? te.reps_min ?? te.reps_max),
-  }
+  const sug = suggest(te, last ? { kg: last.top_kg, reps: last.top_reps } : null)
+  const base: Draft = lastSet ? { kg: show(lastSet.kg), reps: show(lastSet.reps) } : { kg: show(sug.kg), reps: show(sug.reps) }
+  const showSug = !readOnly && !skipped && !lastSet && (sug.kgSuggested || sug.repsSuggested)
   const draftOf = (n: number) => drafts[n] ?? base
   const edit = (n: number, d: Partial<Draft>) => setDrafts((all) => ({ ...all, [n]: { ...draftOf(n), ...d } }))
 
@@ -262,6 +263,13 @@ function ExerciseLog({ te, sets, skipped, last, best, open, readOnly, onToggle, 
 
       {open && (
         <div className="pb-3">
+          {showSug && (
+            <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm tabular-nums text-muted">
+              <Badge>sugerido</Badge>
+              <span className="text-fg">{sug.kg != null ? `${sug.kg ? `${kgFmt(sug.kg)} kg` : 'corpo'} × ` : ''}{sug.reps ?? '–'}{unit === 'reps' ? '' : ` ${unit}`}</span>
+              {last?.top_kg != null && <span>· última vez {kgFmt(last.top_kg)}×{last.top_reps}</span>}
+            </p>
+          )}
           <ol className="flex flex-col gap-2" aria-label={`Séries de ${ex.name}`}>
             {Array.from({ length: rows }, (_, i) => i + 1).map((n) => {
               const s = sets.find((x) => x.set_number === n)

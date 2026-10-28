@@ -161,6 +161,12 @@ expect_deny "anon: profile negado"       anon - "select count(*) from profile"
 expect_deny "anon: exercise_kcal negado" anon - "select count(*) from exercise_kcal"
 expect_deny "anon: v_energy_daily negado" anon - "select count(*) from v_energy_daily"
 expect_deny "bot: DELETE profile negado" bot - "delete from profile"
+# alvo de reps da ficha: nulo por padrão, > 0, bot ajusta
+expect_eq "reps_alvo: coluna nula por padrão" postgres - \
+  "select is_nullable || ' ' || count(*) filter (where te.reps_alvo is not null) from information_schema.columns c, template_exercises te where c.table_name = 'template_exercises' and c.column_name = 'reps_alvo' group by is_nullable" "YES 0"
+expect_ok   "reps_alvo: bot ajusta alvo"  bot - "update template_exercises set reps_alvo = 8, carga_alvo = 40 where position = 1"
+if out="$(q bot - "update template_exercises set reps_alvo = 0 where position = 1")"; then fail "reps_alvo: 0 deveria falhar" "$out"
+elif grep -q reps_alvo_check <<<"$out"; then ok "reps_alvo: 0 recusado (check)"; else fail "reps_alvo: 0" "$out"; fi
 expect_eq "TACO: 597 alimentos"          bot - "select count(*) from foods where code like 'taco:%'" 597
 expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
 expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"

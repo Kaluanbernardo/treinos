@@ -23,6 +23,8 @@ TREINO
   fit log-set <exercicio_slug> <kg> <reps> [--set n] [--date d] [--rir r] [--warmup] [--session id]
         registra série (cria/usa a sessão do dia da ficha que contém o exercício)
   fit carga <exercicio_slug> <kg> [--template slug] [--motivo t]    carga-alvo (gera bot_note 'carga')
+  fit target <ficha_slug|id> <exercicio (nome ou slug)> [--kg X] [--reps N] [--motivo t]
+        alvo da próxima sessão (carga_alvo / reps_alvo; o app pré-preenche com "sugerido"); sem --kg/--reps mostra
 
 AGENDA (exceções; a grade base só muda com confirmação explícita do Kaluan)
   fit move <data> <HH:MM> --to <data> <HH:MM> [--motivo t]   remarca (pula a original + adiciona a nova)
@@ -394,6 +396,41 @@ def cmd_carga(a):
     show(out)
 
 
+def cmd_target(a):
+    pos, o = opts(a, flags=("kg", "reps", "motivo"))
+    if len(pos) < 2:
+        sys.exit("uso: fit target <ficha_slug|id> <exercicio> [--kg X] [--reps N] [--motivo t]")
+    tref, q = pos[0], " ".join(pos[1:])
+    tw = f"t.id::text = {lit(tref)}" if re.fullmatch(r"[0-9a-f-]{36}", tref) else f"t.slug = {lit(tref)}"
+    base = (f"from template_exercises te join workout_templates t on t.id = te.template_id join exercises e on e.id = te.exercise_id "
+            f"where {tw} and (e.slug = {lit(q)} or f_unaccent(lower(e.name)) like {lit('%' + norm(q) + '%')})")
+    rows = bot(f"select te.id, t.name as ficha, e.name as exercicio, te.carga_alvo, te.reps_alvo, te.reps_min, te.reps_max {base} order by te.position")
+    exact = [r for r in rows if norm(r["exercicio"]) == norm(q)]
+    rows = exact or rows
+    if len(rows) != 1:
+        if rows:
+            table(rows, ["ficha", "exercicio", "carga_alvo", "reps_alvo"])
+        sys.exit(f"erro: {len(rows)} exercícios batem com '{q}' nessa ficha" if rows else f"erro: '{q}' não está na ficha {tref}")
+    r = rows[0]
+    sets, desc = [], []
+    if "kg" in o:
+        kg = pnum(o["kg"], "kg")
+        sets.append(f"carga_alvo = {kg}")
+        desc.append(f"{kg:g} kg")
+    if "reps" in o:
+        reps = int(pnum(o["reps"], "reps"))
+        if reps <= 0:
+            sys.exit("erro: --reps precisa ser > 0")
+        sets.append(f"reps_alvo = {reps}")
+        desc.append(f"{reps} reps")
+    if sets:
+        r = bot(f"update template_exercises set {', '.join(sets)}, source = 'bot' where id = {lit(r['id'])} "
+                f"returning (select name from workout_templates w where w.id = template_id) as ficha, "
+                f"(select name from exercises x where x.id = exercise_id) as exercicio, carga_alvo, reps_alvo, reps_min, reps_max")[0]
+        note("carga", f"{r['ficha']} · {r['exercicio']}: alvo {' × '.join(desc)}" + (f". {o['motivo']}" if o.get("motivo") else "."), "template_exercises")
+    table([r], ["ficha", "exercicio", "carga_alvo", "reps_alvo", "reps_min", "reps_max"])
+
+
 # ---------------------------------------------------------------- agenda
 def find_occurrence(d, t):
     rows = bot(f"select * from plan_between({lit(d)}, {lit(d)}) where active and start_time = {lit(t)}::time")
@@ -733,7 +770,7 @@ def cmd_kcal_day(a):
     print(ex + (f"  ({' + '.join(parts)})" if parts else ""))
     for x in w:
         print(f"  · {x['sessao']}: {x['kcal']} kcal ({x['source']}, id {x['id']})")
-    print(f"gasto        {n(r['out_kcal'])} kcal")
+    print(f"gasto        {n(r['out_kcal'])} kcal" if r["out_kcal"] is not None else "gasto        –   (sem basal)")
     print(f"comida       {n(r['food_kcal'])} kcal" + ("" if r["food_logged"] else "  (nada registrado)") + ("  (tem estimativa)" if r["food_has_estimated"] else ""))
     if r["balance_kcal"] is not None:
         b = int(r["balance_kcal"])
@@ -790,7 +827,7 @@ def cmd_note(a):
 
 COMMANDS = {
     "today": cmd_today, "week": cmd_week, "evo": cmd_evo, "summary": cmd_summary, "day": cmd_day, "food": cmd_food,
-    "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga,
+    "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga, "target": cmd_target,
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
     "meal-del": cmd_meal_del, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
     "water": cmd_water, "note": cmd_note, "videos": cmd_videos,

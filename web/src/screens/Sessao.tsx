@@ -8,6 +8,7 @@ import {
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { PrevBest, PrevSet, SetLog, TemplateExercise } from '../lib/types'
+import { suggest } from '../lib/target'
 import { prFlagsFor } from '../lib/pr'
 import { sessionProgress } from '../lib/session'
 import { dm, intFmt, kgFmt, mmss, num, capitalize, restLabel, wdShort } from '../lib/format'
@@ -95,14 +96,18 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   const isSkipped = skipped.has(ex.id)
 
   const keyOf = (n: number) => `${ex.id}:${n}`
+  // dentro da sessão vale a última série confirmada; antes dela, o alvo da ficha (ou a última sessão)
+  const lastConf = exSets[exSets.length - 1]
+  const sugOf = (n: number) => suggest(te, exPrev.find((x) => x.set_number === n) ?? exPrev[exPrev.length - 1])
   const defaultFor = (n: number): Draft => {
-    const lastConf = exSets[exSets.length - 1]
-    const p = exPrev.find((x) => x.set_number === n) ?? exPrev[exPrev.length - 1]
-    const base = lastConf ?? p
-    return {
-      kg: base?.kg ?? te.carga_alvo ?? null,
-      reps: base?.reps ?? te.reps_min ?? te.reps_max ?? null,
-    }
+    if (lastConf) return { kg: lastConf.kg, reps: lastConf.reps }
+    const s = sugOf(n)
+    return { kg: s.kg, reps: s.reps }
+  }
+  const suggestedFor = (n: number) => {
+    if (lastConf || drafts[keyOf(n)]) return false
+    const s = sugOf(n)
+    return s.kgSuggested || s.repsSuggested
   }
   const draftFor = (n: number) => drafts[keyOf(n)] ?? defaultFor(n)
   const setDraft = (n: number, d: Draft) => setDrafts((all) => ({ ...all, [keyOf(n)]: d }))
@@ -272,7 +277,10 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
           return (
             <li key={n} className="rounded-[var(--radius-card)] bg-card-2 p-4 ring-1 ring-lime/30">
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-lg font-semibold">Série {n} <span className="font-normal text-muted">de {rowCount}</span></p>
+                <p className="flex items-center gap-2 text-lg font-semibold">
+                  Série {n} <span className="font-normal text-muted">de {rowCount}</span>
+                  {suggestedFor(n) && <Badge>sugerido</Badge>}
+                </p>
                 <p className="text-sm tabular-nums text-muted">{prevOf(n) ? <>anterior <b className="font-semibold text-fg">{prevOf(n)}</b></> : 'sem anterior'}</p>
               </div>
               <div className="mt-3 grid grid-cols-1 gap-2">

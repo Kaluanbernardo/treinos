@@ -40,7 +40,7 @@ export const usePlan = (from: string, to: string) =>
 
 // ---------------------------------------------------------------- treino
 const TEMPLATE_SELECT =
-  'id, slug, name, modality, warmup, note, est_minutes, template_exercises(id, position, sets, reps_min, reps_max, reps_unit, per_side, rir, rest_s_min, rest_s_max, carga_alvo, warmup, note, exercises(id, slug, name, muscle_group, main_lift, video_url, tips))'
+  'id, slug, name, modality, warmup, note, est_minutes, template_exercises(id, position, sets, reps_min, reps_max, reps_unit, per_side, rir, rest_s_min, rest_s_max, carga_alvo, reps_alvo, warmup, note, exercises(id, slug, name, muscle_group, main_lift, video_url, tips))'
 
 const sortTemplate = (t: Template) => ({
   ...t,

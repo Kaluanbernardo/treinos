@@ -94,6 +94,7 @@ export interface TemplateExercise {
   rest_s_min: number | null
   rest_s_max: number | null
   carga_alvo: number | null
+  reps_alvo: number | null
   warmup: string | null
   note: string | null
   exercises: Exercise
