@@ -26,7 +26,7 @@ export function Treino() {
   const shown = all ? history : history.slice(0, 8)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-2xl">
       <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Treino</h1>
 
       {active.data && (

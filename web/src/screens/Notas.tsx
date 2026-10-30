@@ -35,7 +35,7 @@ export function Notas(_: { email: string }) {
   const label = (d: string) => (d === today ? 'Hoje' : d === addDays(today, -1) ? 'Ontem' : capitalize(longDay(d)))
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-2xl">
       <header className="flex items-center gap-1 pt-1">
         <IconButton label="Voltar" onClick={() => (history.length > 1 ? history.back() : go('hoje'))}><ArrowLeft size={24} /></IconButton>
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Notas</h1>

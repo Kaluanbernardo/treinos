@@ -168,7 +168,7 @@ export function toast(text: string, opts: Omit<ToastMsg, 'id' | 'text'> & { ms?:
 export function Toaster() {
   const list = useSyncExternalStore((cb) => { listeners.add(cb); return () => listeners.delete(cb) }, () => toasts)
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+88px)] z-50 mx-auto flex max-w-lg flex-col gap-2 px-4">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+88px)] z-50 mx-auto flex max-w-lg flex-col gap-2 px-4 lg:inset-x-auto lg:right-6 lg:bottom-6 lg:mx-0 lg:w-[400px] lg:px-0">
       {list.map((t) => (
         <div key={t.id} className={`toast-in pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border bg-card-2 px-4 py-3 shadow-[var(--shadow-toast)] ${
           t.tone === 'err' ? 'border-err/40' : t.tone === 'lime' ? 'border-lime/50' : 'border-line'}`}>
@@ -186,7 +186,7 @@ export function Toaster() {
   )
 }
 
-// ---------------------------------------------------------------- bottom sheet
+// ---------------------------------------------------------------- bottom sheet (no desktop: modal centralizado)
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -199,10 +199,10 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     <dialog
       ref={ref} onClose={onClose} aria-label={title} tabIndex={-1}
       onClick={(e) => { if (e.target === ref.current) onClose() }}
-      className="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 text-fg outline-none backdrop:bg-black/60"
+      className="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 text-fg outline-none backdrop:bg-black/60 lg:m-auto lg:max-w-xl"
     >
-      <div className="mx-auto max-h-[85dvh] max-w-lg overflow-y-auto rounded-t-[24px] outline-none border-t border-line bg-card px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)]">
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line" aria-hidden="true" />
+      <div className="mx-auto max-h-[85dvh] max-w-lg overflow-y-auto rounded-t-[24px] outline-none border-t border-line bg-card px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+20px)] lg:max-w-none lg:rounded-[24px] lg:border lg:pt-5 lg:pb-5 lg:shadow-[var(--shadow-toast)]">
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line lg:hidden" aria-hidden="true" />
         <div className="flex items-start justify-between gap-3">
           <h2 className="pt-2 text-xl font-semibold">{title}</h2>
           <IconButton label="Fechar" onClick={onClose}><X size={22} /></IconButton>

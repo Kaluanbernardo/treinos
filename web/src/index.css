@@ -122,6 +122,10 @@
 dialog.sheet[open] > div { animation: sheet-up 260ms var(--ease-out-expo); }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 dialog.sheet { max-height: 100dvh; }
+@media (min-width: 1024px) {
+  dialog.sheet[open] > div { animation-name: modal-in; animation-duration: 200ms; }
+}
+@keyframes modal-in { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 dialog.photo-view[open] { animation: photo-in 220ms var(--ease-out-expo); }
 @keyframes photo-in { from { opacity: 0; } to { opacity: 1; } }
 

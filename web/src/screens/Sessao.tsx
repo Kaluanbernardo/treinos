@@ -160,13 +160,15 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
     const open = (i: number) => i !== idx && !prog.settled(exercises[i])
     const after = exercises.findIndex((_, i) => i > idx! && open(i))
     const any = after === -1 ? exercises.findIndex((_, i) => open(i)) : after
-    if (any !== -1) { setIdx(any); setTips(false); window.scrollTo({ top: 0 }) }
+    if (any !== -1) pick(any)
   }
 
+  function pick(i: number) { setIdx(i); setTips(false); window.scrollTo({ top: 0 }) }
+
   return (
-    <div className="flex flex-col gap-4 pb-[calc(env(safe-area-inset-bottom)+132px)]">
+    <div className="flex flex-col gap-4 pb-[calc(env(safe-area-inset-bottom)+132px)] lg:pb-8">
       {/* barra superior: progresso das séries em anel + duração + volume */}
-      <header className="sticky top-0 z-10 -mx-4 border-b border-line bg-bg/95 px-2 pt-[max(env(safe-area-inset-top),8px)] pb-2 backdrop-blur-md">
+      <header className="sticky top-0 z-10 -mx-4 border-b border-line bg-bg/95 px-2 pt-[max(env(safe-area-inset-top),8px)] pb-2 backdrop-blur-md lg:-mx-8 lg:px-6 lg:py-3">
         <div className="flex items-center gap-2">
           <IconButton label="Voltar ao Hoje (o treino continua salvo)" onClick={() => go('hoje')}><ArrowLeft size={24} /></IconButton>
           <Ring value={doneCount} target={planned} color="var(--color-lime)" size={44} stroke={5} label={`${doneCount} de ${planned} séries`}>
@@ -186,7 +188,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
           )}
           <Button variant="secondary" className="mr-1 h-11 px-4" onClick={() => setFinishing(true)}>Finalizar</Button>
         </div>
-        <nav aria-label="Exercícios" className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2">
+        <nav aria-label="Exercícios" className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2 lg:hidden">
           {exercises.map((t, i) => {
             const n = prog.count(t.exercises.id)
             const off = skipped.has(t.exercises.id)
@@ -194,7 +196,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
             const on = i === idx
             return (
               <button
-                key={t.id} type="button" onClick={() => { setIdx(i); setTips(false); window.scrollTo({ top: 0 }) }}
+                key={t.id} type="button" onClick={() => pick(i)}
                 aria-current={on ? 'step' : undefined}
                 aria-label={`${t.exercises.name}: ${off ? 'pulado' : `${n} de ${t.sets} séries`}`}
                 className={`flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold tabular-nums transition-colors duration-150 ${
@@ -209,6 +211,38 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
         </nav>
       </header>
 
+      {/* desktop: lista de exercícios à esquerda, exercício atual à direita */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:gap-8">
+      <nav aria-label="Exercícios" className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
+        <ol className="flex flex-col gap-1.5">
+          {exercises.map((t, i) => {
+            const n = prog.count(t.exercises.id)
+            const off = skipped.has(t.exercises.id)
+            const complete = !off && n >= t.sets
+            const on = i === idx
+            return (
+              <li key={t.id}>
+                <button
+                  type="button" onClick={() => pick(i)} aria-current={on ? 'step' : undefined}
+                  className={`flex min-h-16 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left transition-colors duration-150 ${
+                    on ? 'bg-card-2 ring-1 ring-lime/30' : 'hover:bg-card'}`}
+                >
+                  <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ${
+                    complete ? 'action-fill' : off ? 'border border-dashed border-line text-muted' : on ? 'bg-fg text-bg' : 'border-2 border-line text-muted'}`}>
+                    {complete ? <Check size={18} strokeWidth={3} /> : off ? <SkipForward size={16} /> : i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate font-medium ${on ? 'text-fg' : off ? 'text-muted line-through decoration-1' : 'text-fg/90'}`}>{t.exercises.name}</span>
+                    <span className="block text-sm tabular-nums text-muted">{off ? 'pulado' : `${n} de ${t.sets} séries`}</span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
+
+      <div className="flex min-w-0 flex-col gap-4">
       {/* exercício atual */}
       <section aria-labelledby="ex-title">
         <div className="flex items-start justify-between gap-2">
@@ -339,11 +373,11 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
       )}
 
       <div className="grid grid-cols-[auto_1fr] gap-3">
-        <Button size="lg" onClick={() => { setIdx(Math.max(0, idx - 1)); setTips(false); window.scrollTo({ top: 0 }) }} disabled={idx === 0} aria-label="Exercício anterior">
+        <Button size="lg" onClick={() => pick(Math.max(0, idx - 1))} disabled={idx === 0} aria-label="Exercício anterior">
           <ChevronLeft size={22} aria-hidden="true" />
         </Button>
         {nextEx ? (
-          <Button variant={exDone ? 'primary' : 'secondary'} size="lg" className="min-w-0" onClick={() => { setIdx(idx + 1); setTips(false); window.scrollTo({ top: 0 }) }}>
+          <Button variant={exDone ? 'primary' : 'secondary'} size="lg" className="min-w-0" onClick={() => pick(idx + 1)}>
             <span className="truncate">Próximo: {nextEx.exercises.name}</span> <ChevronRight size={22} className="shrink-0" aria-hidden="true" />
           </Button>
         ) : (
@@ -352,6 +386,8 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
       </div>
 
       <RestBar rest={rest} onChange={setRest} />
+      </div>
+      </div>
 
       <Sheet open={finishing} onClose={() => setFinishing(false)} title="Finalizar treino?">
         <div className="flex items-center gap-4">
@@ -495,8 +531,8 @@ function RestBar({ rest, onChange }: { rest: Rest | null; onChange: (r: Rest | n
   if (!rest || left <= 0) return null
   const pct = Math.min(100, (1 - left / rest.total) * 100)
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/97 pb-[env(safe-area-inset-bottom)] backdrop-blur-md" role="timer" aria-live="off">
-      <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/97 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:sticky lg:bottom-6 lg:rounded-2xl lg:border lg:pb-0 lg:shadow-[var(--shadow-toast)]" role="timer" aria-live="off">
+      <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3 lg:max-w-none">
         <Ring value={pct} target={100} color="var(--color-lime)" size={52} stroke={5} label={`Descanso: ${Math.round(pct)}% concluído`}>
           <Timer size={20} className="text-lime" aria-hidden="true" />
         </Ring>
@@ -534,7 +570,7 @@ function Resumo({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-28">
+    <div className="flex flex-col gap-4 pb-28 lg:mx-auto lg:w-full lg:max-w-2xl lg:pb-12">
       <header className="flex items-center gap-1 pt-[max(env(safe-area-inset-top),8px)]">
         <IconButton label="Voltar" onClick={() => (history.length > 1 ? history.back() : go('hoje'))}><ArrowLeft size={24} /></IconButton>
         <p className="text-muted">{capitalize(wdShort(s.date))}, {dm(s.date)}</p>

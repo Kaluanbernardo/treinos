@@ -46,9 +46,10 @@ export function Hoje() {
   const strengthToday = active.data ? undefined
     : items.find((i) => i.active && i.modality === 'musculacao' && i.template_id && i.session_status !== 'faltou' && (!hero || key(i) !== key(hero)))
 
+  // desktop: agora + evolução, resumo (quando há) na largura toda, dia + semana (ordem do celular intacta)
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex items-center justify-between gap-3 pt-1">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-5">
+      <header className="flex items-center justify-between gap-3 pt-1 lg:col-span-2">
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
           {capitalize(wdShort(todayIso))}, <span className="text-muted">{dMon(todayIso)}</span>
         </h1>
@@ -61,6 +62,7 @@ export function Hoje() {
         </div>
       </header>
 
+      <div className="flex flex-col gap-4 lg:gap-5 lg:[&>*:last-child]:flex-1">
       {today.isError ? (
         <ErrorState what="o seu dia" message={(today.error as Error).message} onRetry={() => today.refetch()} />
       ) : today.isPending || active.isPending ? (
@@ -74,9 +76,10 @@ export function Hoje() {
         <DayDoneCard next={next} />
       )}
       {strengthToday && <FichaHojeCard item={strengthToday} onFicha={() => openFicha(strengthToday.template_id)} />}
+      </div>
 
-      <EvolucaoCard />
-      <SummaryCard />
+      <div className="flex flex-col lg:[&>*]:flex-1"><EvolucaoCard /></div>
+      <div className="empty:hidden lg:col-span-2"><SummaryCard /></div>
       <DiaCard />
       <SemanaCard items={items} now={now} heroKey={hero ? key(hero) : null} next={next} />
       <FichaSheet template={ficha} onClose={() => setFicha(null)} />

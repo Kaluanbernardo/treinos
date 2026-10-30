@@ -1,6 +1,7 @@
 import { Dumbbell, Flame, Home, PieChart, TrendingUp, type LucideIcon } from 'lucide-react'
 import { go } from '../lib/router'
 
+// No desktop (lg+) esta barra some e a SideNav assume (mesmas TABS + Agenda e Configurações).
 // Agenda saiu da barra (abre pelo Hoje: semana, próxima atividade e treinos na semana).
 export type Tab = 'hoje' | 'treino' | 'evolucao' | 'nutricao' | 'calorias'
 
@@ -16,7 +17,7 @@ export function BottomNav({ tab }: { tab: Tab | null }) {
   return (
     <nav
       aria-label="Navegação principal"
-      className="sticky bottom-0 z-20 border-t border-line bg-bg/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
+      className="sticky bottom-0 z-20 border-t lg:hidden border-line bg-bg/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
     >
       <ul className="mx-auto grid max-w-lg grid-cols-5">
         {TABS.map(({ id, label, Icon }) => {

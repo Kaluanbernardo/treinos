@@ -38,7 +38,7 @@ export function Calorias() {
   const missing = profile.data !== undefined ? missingFromProfile(profile.data) : []
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-2xl">
       <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Calorias</h1>
 
       <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Dia">

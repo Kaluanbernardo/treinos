@@ -3,8 +3,8 @@ import type { Session } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase, missingConfig } from './lib/supabase'
 import { useRoute } from './lib/router'
-import { BottomNav, type Tab } from './components/BottomNav'
-import { Toaster } from './components/ui'
+import { AppShell } from './components/AppShell'
+import type { NavId } from './components/SideNav'
 import { Login } from './screens/Login'
 import { Hoje } from './screens/Hoje'
 import { Treino } from './screens/Treino'
@@ -36,26 +36,21 @@ export default function App() {
   if (!session) return <Login />
 
   const fullscreen = route.name === 'sessao'
-  const tab: Tab | null = ['hoje', 'treino', 'evolucao', 'nutricao', 'calorias'].includes(route.name) ? (route.name as Tab) : null
+  const NAV: string[] = ['hoje', 'treino', 'evolucao', 'nutricao', 'calorias', 'agenda', 'config']
+  const active: NavId | null = NAV.includes(route.name) ? (route.name as NavId) : null
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-lg flex-col">
-      <main
-        className={`flex-1 px-4 ${fullscreen ? '' : 'pt-[max(env(safe-area-inset-top),16px)] pb-8'}`}
-      >
-        {route.name === 'hoje' && <Hoje />}
-        {route.name === 'treino' && <Treino />}
-        {route.name === 'sessao' && <Sessao id={route.id} />}
-        {route.name === 'evolucao' && <Evolucao />}
-        {route.name === 'nutricao' && <Nutricao />}
-        {route.name === 'agenda' && <Agenda />}
-        {route.name === 'calorias' && <Calorias />}
-        {route.name === 'notas' && <Notas email={session.user.email ?? ''} />}
-        {route.name === 'config' && <Config email={session.user.email ?? ''} />}
-      </main>
-      {!fullscreen && <BottomNav tab={tab} />}
-      <Toaster />
-    </div>
+    <AppShell active={active} fullscreen={fullscreen}>
+      {route.name === 'hoje' && <Hoje />}
+      {route.name === 'treino' && <Treino />}
+      {route.name === 'sessao' && <Sessao id={route.id} />}
+      {route.name === 'evolucao' && <Evolucao />}
+      {route.name === 'nutricao' && <Nutricao />}
+      {route.name === 'agenda' && <Agenda />}
+      {route.name === 'calorias' && <Calorias />}
+      {route.name === 'notas' && <Notas email={session.user.email ?? ''} />}
+      {route.name === 'config' && <Config email={session.user.email ?? ''} />}
+    </AppShell>
   )
 }
 

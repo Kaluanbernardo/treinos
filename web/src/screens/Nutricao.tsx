@@ -20,16 +20,17 @@ export function Nutricao() {
   const t = targets.data
   const meals = logs.data && photos.data ? groupMeals(logs.data, photos.data) : []
 
+  // desktop: dia, macros e checks à esquerda; feed de refeições à direita (ordem do celular intacta)
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 pt-1">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:grid-rows-[auto_auto_auto_auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-4">
+      <div className="flex items-center justify-between gap-3 pt-1 lg:col-span-2">
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Nutrição</h1>
         {date !== today && (
           <Button onClick={() => setDate(today)} className="flex items-center gap-2"><CalendarCheck size={18} aria-hidden="true" /> Hoje</Button>
         )}
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Dia">
+      <div className="flex items-center justify-between rounded-2xl bg-card p-1 lg:col-start-1" role="group" aria-label="Dia">
         <IconButton label="Dia anterior" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={24} /></IconButton>
         <p className="text-center" aria-live="polite">
           <span className="block font-semibold">{date === today ? 'Hoje' : date === addDays(today, -1) ? 'Ontem' : capitalize(longDay(date).split(',')[0])}</span>
@@ -40,6 +41,7 @@ export function Nutricao() {
         </IconButton>
       </div>
 
+      <div className="lg:col-start-1">
       {daily.isError || targets.isError ? (
         <ErrorState what="a nutrição" onRetry={() => { daily.refetch(); targets.refetch() }} />
       ) : daily.isPending || targets.isPending ? (
@@ -47,9 +49,10 @@ export function Nutricao() {
       ) : (
         <Macros day={day} t={t ?? null} />
       )}
+      </div>
 
-      <section aria-labelledby="ref-title" className="flex flex-col gap-3">
-        <div className="mt-2 flex items-baseline justify-between gap-3">
+      <section aria-labelledby="ref-title" className="flex flex-col gap-3 lg:col-start-2 lg:row-span-4 lg:row-start-2">
+        <div className="mt-2 flex items-baseline justify-between gap-3 lg:mt-0">
           <h2 id="ref-title" className="text-xl font-semibold">Refeições</h2>
           {meals.length > 0 && <span className="text-sm tabular-nums text-muted">{plural(meals.length, 'refeição', 'refeições')}</span>}
         </div>
@@ -59,7 +62,7 @@ export function Nutricao() {
               : <Feed meals={meals} />}
       </section>
 
-      <Checks day={day} date={date} t={t ?? null} />
+      <div className="lg:col-start-1"><Checks day={day} date={date} t={t ?? null} /></div>
     </div>
   )
 }

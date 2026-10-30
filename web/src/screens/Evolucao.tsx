@@ -18,11 +18,12 @@ export function Evolucao() {
   const [period, setPeriod] = useState<Period>(() => (localStorage.getItem('evo_period') as Period) || '4s')
   const choose = (p: Period) => { setPeriod(p); localStorage.setItem('evo_period', p) }
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em]">Evolução</h1>
-      <div className="sticky top-0 z-10 -mx-4 bg-bg/92 px-4 pt-[env(safe-area-inset-top)] pb-2 backdrop-blur-md">
-        <Segmented label="Período" value={period} onChange={choose}
-          options={[{ value: '4s', label: '4 sem' }, { value: '3m', label: '3 meses' }, { value: 'tudo', label: 'Tudo' }]} />
+    // desktop: blocos em duas colunas, alturas casadas por linha (ordem do celular intacta)
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-5">
+      <h1 className="pt-1 text-[28px] font-bold leading-tight tracking-[-0.02em] lg:col-span-2">Evolução</h1>
+      <div className="sticky top-0 z-10 -mx-4 bg-bg/92 px-4 pt-[env(safe-area-inset-top)] pb-2 backdrop-blur-md lg:col-span-2 lg:-mx-8 lg:px-8 lg:py-2">
+        <div className="lg:max-w-md"><Segmented label="Período" value={period} onChange={choose}
+          options={[{ value: '4s', label: '4 sem' }, { value: '3m', label: '3 meses' }, { value: 'tudo', label: 'Tudo' }]} /></div>
       </div>
       <RecompBlock />
       <EvolucaoV2Blocks period={period} slot="resumo" />
