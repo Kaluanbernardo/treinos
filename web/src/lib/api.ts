@@ -155,10 +155,10 @@ export function useSkipExercise() {
   })
 }
 
-/** Invalida tudo que depende de sessões/séries (Hoje, Agenda, Evolução). */
+/** Invalida tudo que depende de sessões/séries (Hoje, Agenda, Evolução, gasto estimado em Calorias). */
 export function invalidateTraining(qc: QueryClient) {
   for (const k of ['v_today', 'v_week', 'plan', 'v_sessions', 'active_session', 'session', 'v_e1rm_session',
-    'v_prs', 'v_streaks', 'v_weekly_summary', 'v_monthly_summary', 'v_recomposition', 'muscle_volume', 'session_exercises', 'session_prs'])
+    'v_prs', 'v_streaks', 'v_weekly_summary', 'v_monthly_summary', 'v_recomposition', 'muscle_volume', 'session_exercises', 'session_prs', 'v_energy_daily'])
     qc.invalidateQueries({ queryKey: [k] })
 }
 

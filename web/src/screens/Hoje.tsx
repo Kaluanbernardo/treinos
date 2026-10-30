@@ -11,6 +11,7 @@ import { go } from '../lib/router'
 import type { PlanItem, Template } from '../lib/types'
 import { capitalize, dMon, hhmm, intFmt, kgFmt, num, todaySP, wdShort, addDays, weekStart } from '../lib/format'
 import { weekDays } from '../lib/week'
+import { type KcalTargets, mainTarget, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
@@ -349,26 +350,44 @@ function EvolucaoCard() {
 }
 
 // ---------------------------------------------------------------- Dia: anéis
+/** As duas metas de hoje (com / sem o treino que falta) e o ajuste dos últimos 7 dias. */
+function KcalTargetsLine({ k, kcal }: { k: KcalTargets; kcal: number }) {
+  return (
+    <p className="mt-3 text-[13px] leading-snug tabular-nums text-muted">
+      {k.hasPlan ? (
+        <>Com treino <b className="font-semibold text-fg">{intFmt(k.withWorkout)}</b> kcal ({pctOf(kcal, k.withWorkout)}%)
+          {' · '}Sem treino <b className="font-semibold text-fg">{intFmt(k.noWorkout)}</b> kcal ({pctOf(kcal, k.noWorkout)}%)</>
+      ) : <>Sem treino pendente hoje</>}
+      {' · '}ajuste 7d {k.adjustDays ? signedKcal(k.adjust) : 'coletando dados'}
+    </p>
+  )
+}
+
 function DiaCard() {
   const daily = useDailyNutrition()
   const targets = useNutritionTargets()
   const streaks = useStreaks()
   const toggle = useToggleCreatine()
   const steps = useDailySteps(2)
+  const kt = useKcalTargets()
   const date = todaySP()
-  if (daily.isPending || targets.isPending || streaks.isPending) return <Skeleton className="h-52" />
+  if (daily.isPending || targets.isPending || streaks.isPending || kt.isPending) return <Skeleton className="h-52" />
   const d = daily.data?.find((x) => x.date === date)
   const t = targets.data
+  // meta de hoje (lib/kcal.ts): com o treino que falta, se houver; senão só o exercício já registrado
+  const k = kt.data
+  const ideal = mainTarget(k)
   const total = (streaks.data ?? []).find((s) => s.modality === 'total')
   const kcal = d?.kcal ?? 0
   const p = d?.protein_g ?? 0
   const creatine = d?.creatine ?? false
   const done = total?.this_week_done ?? 0
   const planned = total?.this_week_planned ?? 0
+  const kcalPct = pctOf(kcal, ideal)
 
-  const rows = [
+  const rows: { label: string; value: string; of: string; pct?: number | null; color: string; to: string }[] = [
     { label: 'Treinos na semana', value: `${done}`, of: `/${planned}`, color: 'var(--color-lime)', to: 'agenda' },
-    { label: 'Calorias', value: intFmt(kcal), of: t?.kcal_target ? `/${intFmt(t.kcal_target)}` : ' kcal', color: 'var(--color-kcal)', to: 'nutricao' },
+    { label: 'Calorias', value: intFmt(kcal), of: ideal ? `/${intFmt(ideal)}` : ' kcal', pct: kcalPct, color: 'var(--color-kcal)', to: 'nutricao' },
     { label: 'Proteína', value: intFmt(p), of: t?.protein_min_g ? `/${t.protein_min_g} g` : ' g', color: 'var(--color-protein)', to: 'nutricao' },
   ]
 
@@ -377,7 +396,7 @@ function DiaCard() {
       <div className="flex items-center gap-5">
         <Rings size={136} stroke={13} gap={4} rings={[
           { value: done, target: planned || null, color: 'var(--color-lime)', label: `Treinos: ${done} de ${planned}` },
-          { value: kcal, target: t?.kcal_target ?? null, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${t?.kcal_target ? ` de ${intFmt(t.kcal_target)}` : ''}` },
+          { value: kcal, target: ideal, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${ideal ? ` de ${intFmt(ideal)} ideais (${kcalPct}%)` : ''}` },
           { value: p, target: t?.protein_min_g ?? null, color: 'var(--color-protein)', label: `Proteína: ${intFmt(p)} g${t?.protein_min_g ? ` de ${t.protein_min_g} g` : ''}` },
         ]} />
         <ul className="min-w-0 flex-1 divide-y divide-line">
@@ -387,12 +406,14 @@ function DiaCard() {
                 <span className="flex items-center gap-1.5 text-[13px] text-muted">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} aria-hidden="true" />{r.label}
                 </span>
-                <span className="text-[22px] font-bold leading-tight tabular-nums">{r.value}<span className="text-[15px] font-medium text-muted">{r.of}</span></span>
+                <span className="text-[22px] font-bold leading-tight tabular-nums">{r.value}<span className="text-[15px] font-medium text-muted">{r.of}</span>
+                  {r.pct != null && <span className="ml-1.5 text-[13px] font-semibold text-muted">{r.pct}%</span>}</span>
               </button>
             </li>
           ))}
         </ul>
       </div>
+      {k?.dynamic && <KcalTargetsLine k={k} kcal={kcal} />}
       {steps.isSuccess && (() => {
         const yest = steps.data.get(addDays(date, -1))
         return (

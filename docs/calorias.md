@@ -38,6 +38,26 @@ comparar com a tendência de peso antes de mexer no número.
 `balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. A meta
 (`target_balance_kcal`) é `−goals.deficit_kcal` (−300).
 
+## Meta de kcal de hoje (app: Hoje, Nutrição, Calorias)
+
+Conta no cliente, em `web/src/lib/kcal.ts` (`useKcalTargets()`), a partir de `v_energy_daily` e do plano do dia:
+
+```
+base        = bmr_kcal + daily_life_kcal                      (linha de hoje)
+planejado   = Σ treinos de hoje ainda sem registro (nem feito/parcial nem faltou):
+              (MET − 1) × kg × min/60, mesma regra de v_energy_daily (min da grade/ficha, senão 60, teto 180);
+              sem peso: média de exercise_kcal dos dias com treino nos últimos 14 dias, por sessão
+ajuste 7d   = −Σ(balance_kcal − target_balance_kcal) / 7, teto ±300
+              (7 dias fechados antes de hoje, só os com refeição e saldo; o divisor é sempre 7)
+sem treino  = base + exercise_kcal (já registrado hoje) − deficit_kcal + ajuste
+com treino  = sem treino + planejado
+```
+
+O anel usa **com treino** enquanto houver treino pendente, senão **sem treino**. Ex.: comeu 700 kcal acima da
+meta na semana → ajuste −100 kcal/dia. Sem basal cai na meta fixa `goals.kcal_target` (já é gasto − déficit:
+não desconta o déficit de novo, sem ajuste nem treino somado). Dias passados (Nutrição/Calorias) mostram o ideal
+real do dia: `out_kcal + target_balance_kcal`, sem ajuste.
+
 ## Comandos
 
 ```bash

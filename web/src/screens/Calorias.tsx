@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardHead, Collecting, ErrorState, IconButton, Segm
 import { Big } from '../components/viz'
 import { BalanceBars } from '../components/charts'
 import { StepsStat } from '../components/Steps'
+import { type KcalTargets, idealKcal, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
 
 /** Gasto (basal + rotina + exercício) × comida. Regra única em v_energy_daily / docs/calorias.md. */
 
@@ -33,6 +34,7 @@ export function Calorias() {
   const energy = useEnergyDaily(60)
   const profile = useProfile()
   const steps = useDailySteps(60)
+  const kt = useKcalTargets()
   const rows = energy.data ?? []
   const day = rows.find((r) => r.date === date) ?? null
   const missing = profile.data !== undefined ? missingFromProfile(profile.data) : []
@@ -58,7 +60,7 @@ export function Calorias() {
         <><Skeleton className="h-96" /><Skeleton className="h-72" /></>
       ) : (
         <>
-          <DayCard day={day} isToday={date === today} missing={missing}
+          <DayCard day={day} isToday={date === today} missing={missing} k={date === today ? kt.data : null}
             steps={steps.isSuccess ? steps.data.get(date) ?? null : undefined} />
           {missing.length > 0 && <ProfileMissing missing={missing} />}
           <BalanceCard rows={rows} period={period} setPeriod={setPeriod} selected={date} onPick={setDate} hasBmr={missing.length === 0} />
@@ -71,7 +73,9 @@ export function Calorias() {
 
 // ---------------------------------------------------------------- dia
 /** `steps`: undefined = não carregou (ou coluna ainda não existe) → bloco some; null = sem leitura no dia. */
-function DayCard({ day, isToday, missing, steps }: { day: EnergyDay | null; isToday: boolean; missing: string[]; steps?: number | null }) {
+function DayCard({ day, isToday, missing, steps, k }: {
+  day: EnergyDay | null; isToday: boolean; missing: string[]; steps?: number | null; k?: KcalTargets | null
+}) {
   const bmr = day?.bmr_kcal ?? null
   const life = day?.daily_life_kcal ?? 0
   const ex = day?.exercise_kcal ?? 0
@@ -79,6 +83,8 @@ function DayCard({ day, isToday, missing, steps }: { day: EnergyDay | null; isTo
   const out = day?.out_kcal ?? null
   const bal = day?.balance_kcal ?? null
   const target = day?.target_balance_kcal ?? null
+  const ideal = idealKcal(day, null)   // gasto − déficit; só quando há basal
+  const idealPct = day?.food_logged ? pctOf(food, ideal) : null
   // dia em andamento: a comida ainda não fechou, então não acusa "déficit alto"
   const high = !isToday && bal != null && target != null && bal < target * 2
   const tone = bal == null ? null : bal > 0 || high ? 'warn' : 'ok'
@@ -116,6 +122,12 @@ function DayCard({ day, isToday, missing, steps }: { day: EnergyDay | null; isTo
           segs={[{ v: bmr ?? 0, c: C.bmr }, { v: life, c: C.life }, { v: ex, c: C.ex, striped: day?.is_estimate }]}
           aria={bmr == null ? `Saiu: basal desconhecido, exercício ${intFmt(ex)} kcal` : `Saiu: ${intFmt(out)} kcal (basal ${intFmt(bmr)}, rotina ${intFmt(life)}, exercício ${intFmt(ex)})`} />
       </div>
+      {k?.dynamic ? <TodayTargets k={k} food={food} /> : ideal != null && target != null && (
+        <p className="mt-3 flex items-baseline justify-between gap-3 text-[15px] tabular-nums text-muted">
+          <span>Ideal {isToday ? 'hoje' : 'do dia'} <span className="text-[13px]">(gasto {signedInt(target)})</span></span>
+          <span><b className="text-lg font-bold text-fg">{intFmt(ideal)}</b> kcal{idealPct != null && <> · {idealPct}% comido</>}</span>
+        </p>
+      )}
 
       <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4">
         <Stat color={C.bmr} label="Basal" value={bmr != null ? intFmt(bmr) : '—'} sub={bmr != null ? `Mifflin · ${num(day?.weight_kg, 1)} kg` : `falta ${missing.join(', ')}`} />
@@ -134,6 +146,32 @@ function DayCard({ day, isToday, missing, steps }: { day: EnergyDay | null; isTo
         </div>
       )}
     </Card>
+  )
+}
+
+/** Hoje: metas com / sem o treino que falta (já com o ajuste dos 7 dias). Conta em lib/kcal.ts. */
+function TodayTargets({ k, food }: { k: KcalTargets; food: number }) {
+  const rows = k.hasPlan
+    ? [{ label: 'Com treino', v: k.withWorkout, sub: `+${intFmt(k.plannedKcal)} do treino que falta` }, { label: 'Sem treino', v: k.noWorkout, sub: 'só o já registrado' }]
+    : [{ label: 'Meta hoje', v: k.noWorkout, sub: 'sem treino pendente' }]
+  return (
+    <div className="mt-4 rounded-2xl bg-card px-4 py-3">
+      <dl className={`grid gap-x-4 gap-y-2 ${rows.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {rows.map((r) => (
+          <div key={r.label}>
+            <dt className="text-[13px] text-muted">{r.label}</dt>
+            <dd className="tabular-nums">
+              <b className="text-lg font-bold">{intFmt(r.v)}</b> <span className="text-muted">kcal · {pctOf(food, r.v)}%</span>
+              <span className="block text-[13px] text-muted">{r.sub}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-[13px] tabular-nums text-muted">
+        {k.adjustDays ? `Já inclui o ajuste 7d de ${signedKcal(k.adjust)} kcal (desvio da meta em ${k.adjustDays} ${k.adjustDays === 1 ? 'dia' : 'dias'} ÷ 7, teto ±300).`
+          : 'Ajuste 7d: coletando dados (precisa de dias fechados com refeições e basal).'}
+      </p>
+    </div>
   )
 }
 

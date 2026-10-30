@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { CalendarCheck, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Droplets, ImageOff, Maximize2, MessageCircle, Pill, X } from 'lucide-react'
-import { useDailyNutrition, useFoodLogs, useMealPhotos, useNutritionTargets, useSignedUrls, useToggleCreatine } from '../lib/api'
+import { useDailyNutrition, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useSignedUrls, useToggleCreatine } from '../lib/api'
 import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets } from '../lib/types'
 import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
+import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
 
 const EMPTY: DailyNutrition = { date: '', kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: false, creatine_g: null, water_ml: null }
 
@@ -16,6 +17,12 @@ export function Nutricao() {
   const targets = useNutritionTargets()
   const logs = useFoodLogs(date)
   const photos = useMealPhotos(date)
+  // hoje: metas com/sem treino (lib/kcal.ts); dias passados: gasto real − déficit. Mesma janela de 60 dias da aba Calorias.
+  const energy = useEnergyDaily(60)
+  const kt = useKcalTargets()
+  const isToday = date === today
+  const energyDay = energy.data?.find((e) => e.date === date)
+  const k = isToday ? kt.data : null
   const day = daily.data?.find((d) => d.date === date) ?? { ...EMPTY, date }
   const t = targets.data
   const meals = logs.data && photos.data ? groupMeals(logs.data, photos.data) : []
@@ -44,10 +51,12 @@ export function Nutricao() {
       <div className="lg:col-start-1">
       {daily.isError || targets.isError ? (
         <ErrorState what="a nutrição" onRetry={() => { daily.refetch(); targets.refetch() }} />
-      ) : daily.isPending || targets.isPending ? (
+      ) : daily.isPending || targets.isPending || energy.isPending || (isToday && kt.isPending) ? (
         <Skeleton className="h-80" />
       ) : (
-        <Macros day={day} t={t ?? null} />
+        <Macros day={day} t={t ?? null} k={k}
+          ideal={isToday ? mainTarget(k) : idealKcal(energyDay, t?.kcal_target ?? null)}
+          dynamic={isToday ? !!k?.dynamic : hasDynamicIdeal(energyDay)} />
       )}
       </div>
 
@@ -67,8 +76,11 @@ export function Nutricao() {
   )
 }
 
-function Macros({ day, t }: { day: DailyNutrition; t: NutritionTargets | null }) {
-  const kcalT = t?.kcal_target ?? null
+function Macros({ day, t, k, ideal, dynamic }: {
+  day: DailyNutrition; t: NutritionTargets | null; k: KcalTargets | null; ideal: number | null; dynamic: boolean
+}) {
+  const kcalT = ideal
+  const kcalPct = pctOf(day.kcal, kcalT)
   const left = kcalT != null ? kcalT - day.kcal : null
   const pMin = t?.protein_min_g ?? null
   const macros = [
@@ -80,14 +92,22 @@ function Macros({ day, t }: { day: DailyNutrition; t: NutritionTargets | null })
     <Card tone="raised" aria-label="Macros do dia">
       <div className="flex flex-col items-center">
         <Ring value={day.kcal} target={kcalT} color="var(--color-kcal)" size={184} stroke={16}
-          label={`Calorias: ${intFmt(day.kcal)}${kcalT ? ` de ${intFmt(kcalT)}` : ''} kcal`}>
+          label={`Calorias: ${intFmt(day.kcal)}${kcalT ? ` de ${intFmt(kcalT)} ideais (${kcalPct}%)` : ''} kcal`}>
           <span className="text-[48px] font-bold leading-none tracking-[-0.02em] tabular-nums">{intFmt(left != null ? Math.abs(left) : day.kcal)}</span>
           <span className="mt-1 text-sm text-muted">{left == null ? 'kcal no dia' : left >= 0 ? 'kcal restantes' : 'kcal acima'}</span>
         </Ring>
         <p className="mt-3 text-[15px] tabular-nums text-muted">
-          <b className="font-semibold text-kcal">{intFmt(day.kcal)}</b>{kcalT ? <> / {intFmt(kcalT)} kcal</> : ' kcal · meta ainda não definida'}
+          <b className="font-semibold text-kcal">{intFmt(day.kcal)}</b>{kcalT ? <> / {intFmt(kcalT)} kcal · <b className="font-semibold text-fg">{kcalPct}%</b></> : ' kcal · meta ainda não definida'}
         </p>
+        {kcalT != null && (
+          <p className="mt-0.5 text-[13px] text-muted">
+            {!dynamic ? 'meta fixa (sem gasto calculado para o dia)'
+              : k ? (k.hasPlan ? 'meta com o treino que falta hoje' : 'meta de hoje (sem treino pendente)')
+                : 'ideal do dia (gasto − déficit)'}
+          </p>
+        )}
       </div>
+      {k?.dynamic && <KcalTargetsBlock k={k} kcal={day.kcal} />}
       <ul className="mt-5 flex flex-col gap-4 border-t border-line pt-5">
         {macros.map((m) => {
           const pct = m.target ? Math.round((m.value / m.target) * 100) : null
@@ -109,6 +129,37 @@ function Macros({ day, t }: { day: DailyNutrition; t: NutritionTargets | null })
         })}
       </ul>
     </Card>
+  )
+}
+
+/** Hoje: as duas metas (com / sem o treino que falta), cada uma com o consumido, e o ajuste dos 7 dias. */
+function KcalTargetsBlock({ k, kcal }: { k: KcalTargets; kcal: number }) {
+  const rows = k.hasPlan
+    ? [{ name: 'Com treino', target: k.withWorkout, sub: `+${intFmt(k.plannedKcal)} kcal do treino que falta` },
+       { name: 'Sem treino', target: k.noWorkout, sub: 'só o exercício já registrado' }]
+    : [{ name: 'Sem treino pendente', target: k.noWorkout, sub: 'exercício de hoje já contado' }]
+  return (
+    <div className="mt-5 flex flex-col gap-4 border-t border-line pt-5">
+      {rows.map((r) => r.target != null && (
+        <div key={r.name}>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{r.name}</span>
+            <span className="tabular-nums text-muted">
+              <b className="text-lg font-bold text-fg">{intFmt(kcal)}</b> / {intFmt(r.target)} kcal
+              <span className="ml-2 inline-block w-11 text-right text-sm">{pctOf(kcal, r.target)}%</span>
+            </span>
+          </div>
+          <Meter className="mt-2" value={kcal} max={r.target} color="var(--color-kcal)" target={r.target}
+            label={`${r.name}: ${intFmt(kcal)} de ${intFmt(r.target)} kcal`} />
+          <p className="mt-1 text-[13px] text-muted">{r.sub}</p>
+        </div>
+      ))}
+      <p className="text-[13px] tabular-nums text-muted">
+        {k.adjustDays
+          ? <>Ajuste 7d <b className="font-semibold text-fg">{signedKcal(k.adjust)}</b> kcal/dia · desvio da meta em {k.adjustDays} {k.adjustDays === 1 ? 'dia' : 'dias'}, dividido por 7 (teto ±300)</>
+          : 'Ajuste 7d: coletando dados (precisa de dias com refeições e basal)'}
+      </p>
+    </div>
   )
 }
 
