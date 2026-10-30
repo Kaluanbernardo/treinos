@@ -176,6 +176,14 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
             <p className="truncate text-lg font-semibold leading-tight">{title}</p>
             <p className="text-sm tabular-nums text-muted"><Elapsed since={startedAt} /> · {doneCount}/{planned} · {intFmt(volume)} kg</p>
           </div>
+          {doneCount === 0 && (
+            <button
+              type="button"
+              className="h-11 shrink-0 px-2 text-sm font-medium text-err disabled:opacity-50"
+              disabled={discard.isPending}
+              onClick={() => discard.mutate(id, { onSuccess: () => { setRest(null); go('hoje', { replace: true }) } })}
+            >Descartar</button>
+          )}
           <Button variant="secondary" className="mr-1 h-11 px-4" onClick={() => setFinishing(true)}>Finalizar</Button>
         </div>
         <nav aria-label="Exercícios" className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2">
