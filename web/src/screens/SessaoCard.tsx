@@ -82,7 +82,7 @@ export function ShareSummary({ id }: { id: string }) {
         {blocks.length === 0 ? (
           <p className="mt-6 text-muted">Nenhuma série registrada.</p>
         ) : (
-          <ol className="mt-3 flex flex-col gap-2.5">
+          <ol className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
             {blocks.map((b) => (
               <li key={b.exId}>
                 <h2 className="text-[14px] font-semibold leading-snug">{b.name}</h2>
