@@ -16,6 +16,7 @@ import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton, haptic, t
 import { repsLabel } from '../components/Ficha'
 import { Ring } from '../components/Ring'
 import { Big } from '../components/viz'
+import { MetricGrid, fitSize } from '../components/Metrics'
 import { ShareSummary } from './SessaoCard'
 
 export function Sessao({ id, card = false, finish = false }: { id: string; card?: boolean; finish?: boolean }) {
@@ -659,18 +660,6 @@ function RestBar({ rest, onChange }: { rest: Rest | null; onChange: (r: Rest | n
 }
 
 // ---------------------------------------------------------------- resumo
-/** Um número do resumo: valor e unidade numa célula só, sem quebra de linha. */
-function Stat({ label, value, unit, tone = '' }: { label: string; value: string | number; unit?: string; tone?: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[13px] text-muted">{label}</dt>
-      <dd className={`whitespace-nowrap text-xl font-bold tabular-nums ${tone}`}>
-        {value}{unit && <span className="ml-1 text-sm font-medium text-muted">{unit}</span>}
-      </dd>
-    </div>
-  )
-}
-
 function Resumo({ id }: { id: string }) {
   const session = useSession(id)
   const ex = useSessionExercises(id)
@@ -736,19 +725,24 @@ function Resumo({ id }: { id: string }) {
               <span className="mt-0.5 text-xs text-muted">de {planned} séries</span>
             </Ring>
           ) : null}
-          <div className="min-w-0 flex-1">
+          <div className="@container min-w-0 flex-1">
             <p className="text-[13px] text-muted">Volume</p>
-            {/* valor e unidade sempre juntos, sem quebrar; volume de 5+ dígitos desce um tamanho */}
-            <Big size={volStr.length > 5 ? 'md' : 'lg'} value={volStr} unit="kg" className="whitespace-nowrap" />
+            {/* valor e unidade sempre juntos numa linha; o número encolhe para caber ao lado do anel */}
+            <p className="whitespace-nowrap font-bold leading-none tracking-[-0.02em] tabular-nums" style={{ fontSize: fitSize(44, [{ value: volStr, unitPx: 28 }]) }}>
+              {volStr}<span className="ml-1 text-lg font-medium tracking-normal text-muted">kg</span>
+            </p>
           </div>
         </div>
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 sm:grid-cols-4">
-          {!planned && <Stat label="Séries" value={s.n_sets} />}
-          <Stat label="Duração" value={s.duration_min ?? '—'} unit="min" />
-          <Stat label="Relógio" value={kcal.data != null ? intFmt(kcal.data) : '—'} unit="kcal" tone={kcal.data != null ? 'text-kcal' : ''} />
-          <Stat label="Recordes" value={prByEx.size} tone={prByEx.size ? 'text-lime' : ''} />
-          {nSkipped > 0 && <Stat label="Pulados" value={nSkipped} />}
-        </dl>
+        <MetricGrid
+          className="mt-4 border-t border-line pt-4" max={24}
+          items={[
+            ...(!planned ? [{ label: 'Séries', value: String(s.n_sets) }] : []),
+            { label: 'Duração', value: s.duration_min != null ? String(s.duration_min) : '—', unit: 'min' },
+            { label: 'Relógio', value: kcal.data != null ? intFmt(kcal.data) : '—', unit: 'kcal', tone: kcal.data != null ? 'text-kcal' : '' },
+            { label: 'Recordes', value: String(prByEx.size), tone: prByEx.size ? 'text-lime' : '' },
+            ...(nSkipped > 0 ? [{ label: 'Pulados', value: String(nSkipped) }] : []),
+          ]}
+        />
         {canEdit && (
           statsMissing ? (
             <Button className="mt-4 w-full" onClick={openEdit}>
