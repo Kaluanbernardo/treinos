@@ -4,6 +4,7 @@ import { go } from '../lib/router'
 import type { SetLog, TemplateExercise } from '../lib/types'
 import { capitalize, intFmt, kgFmt, longDay } from '../lib/format'
 import { Badge, Button, ErrorState, IconButton, Skeleton } from '../components/ui'
+import { MetricGrid, type Metric } from '../components/Metrics'
 
 /**
  * Resumo do treino feito para print: uma coluna, pouca informação, marca Kalufit no topo e no rodapé.
@@ -42,12 +43,12 @@ export function ShareSummary({ id }: { id: string }) {
 
   const nSets = [...byEx.values()].reduce((n, l) => n + l.length, 0)
   const prEx = [...new Set((prs.data ?? []).map((p) => p.exercise_id))]
-  const stats: { label: string; value: string; unit: string; tone?: string }[] = [
+  const stats: Metric[] = [
     { label: 'Duração', value: s.duration_min != null ? String(s.duration_min) : '—', unit: 'min' },
     { label: 'Volume', value: intFmt(s.volume_kg), unit: 'kg' },
     kcal.data != null
       ? { label: 'Relógio', value: intFmt(kcal.data), unit: 'kcal', tone: 'text-kcal' }
-      : { label: 'Séries', value: String(nSets), unit: '' },
+      : { label: 'Séries', value: String(nSets) },
   ]
 
   return (
@@ -58,23 +59,15 @@ export function ShareSummary({ id }: { id: string }) {
       </div>
 
       <article aria-label={`Resumo do treino ${s.title}`} className="mt-2 rounded-[24px] bg-card px-6 pt-8 pb-5">
-        <header className="flex justify-center"><Wordmark /></header>
+        {/* marca como cabeçalho do print: grande e centralizada */}
+        <header className="flex justify-center"><Wordmark hero /></header>
 
         <p className="mt-8 text-center text-[15px] text-muted">{capitalize(longDay(s.date))}</p>
         <h1 className="mt-1 text-center text-[34px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{s.title}</h1>
         {s.status === 'parcial' && <div className="mt-3 flex justify-center"><Badge tone="warn">treino parcial</Badge></div>}
 
-        <dl className="mt-7 grid grid-cols-3 gap-2 border-y border-line py-5">
-          {stats.map((st) => (
-            <div key={st.label} className="min-w-0 text-center">
-              <dt className="text-[12px] text-muted">{st.label}</dt>
-              <dd className={`mt-1.5 text-[22px] font-bold leading-none tracking-[-0.02em] tabular-nums ${st.tone ?? ''}`}>
-                {st.value}
-                {st.unit ? <span className="ml-1 text-[12px] font-medium tracking-normal text-muted">{st.unit}</span> : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        {/* três colunas iguais; valor + unidade numa linha só e o número encolhe para caber (360 px ok) */}
+        <MetricGrid items={stats} center divided className="mt-7 border-y border-line py-5" />
 
         {prEx.length > 0 && (
           <p className="mt-5 flex items-start gap-2 text-[15px] leading-snug">
@@ -123,9 +116,9 @@ export function ShareSummary({ id }: { id: string }) {
   )
 }
 
-function Wordmark({ small = false }: { small?: boolean }) {
+function Wordmark({ small = false, hero = false }: { small?: boolean; hero?: boolean }) {
   return (
-    <span className={`font-extrabold leading-none tracking-[-0.04em] ${small ? 'text-[18px] text-muted' : 'text-[36px]'}`} aria-label="Kalufit">
+    <span className={`font-extrabold leading-none tracking-[-0.04em] ${small ? 'text-[18px] text-muted' : hero ? 'text-[44px]' : 'text-[36px]'}`} aria-label="Kalufit">
       Kalu<span className="text-lime">fit</span>
     </span>
   )
