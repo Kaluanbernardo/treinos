@@ -58,19 +58,19 @@ export function ShareSummary({ id }: { id: string }) {
         <p className="text-sm text-muted">Tire um print para compartilhar.</p>
       </div>
 
-      <article aria-label={`Resumo do treino ${s.title}`} className="mt-2 rounded-[24px] bg-card px-6 pt-8 pb-5">
+      <article aria-label={`Resumo do treino ${s.title}`} className="mt-2 rounded-[24px] bg-card px-5 pt-4 pb-3">
         {/* marca como cabeçalho do print: grande e centralizada */}
         <header className="flex justify-center"><Wordmark hero /></header>
 
-        <p className="mt-8 text-center text-[15px] text-muted">{capitalize(longDay(s.date))}</p>
-        <h1 className="mt-1 text-center text-[34px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{s.title}</h1>
+        <p className="mt-3 text-center text-[12px] text-muted">{capitalize(longDay(s.date))}</p>
+        <h1 className="mt-0.5 text-center text-[24px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{s.title}</h1>
         {s.status === 'parcial' && <div className="mt-3 flex justify-center"><Badge tone="warn">treino parcial</Badge></div>}
 
         {/* três colunas iguais; valor + unidade numa linha só e o número encolhe para caber (360 px ok) */}
-        <MetricGrid items={stats} center divided className="mt-7 border-y border-line py-5" />
+        <MetricGrid items={stats} center divided className="mt-3 border-y border-line py-2.5" />
 
         {prEx.length > 0 && (
-          <p className="mt-5 flex items-start gap-2 text-[15px] leading-snug">
+          <p className="mt-2.5 flex items-start gap-2 text-[12px] leading-snug">
             <Trophy size={18} className="mt-px shrink-0 text-lime" aria-hidden="true" />
             <span>
               <b className="font-semibold text-lime">{prEx.length === 1 ? 'Novo recorde' : `${prEx.length} recordes`}</b>
@@ -82,13 +82,13 @@ export function ShareSummary({ id }: { id: string }) {
         {blocks.length === 0 ? (
           <p className="mt-6 text-muted">Nenhuma série registrada.</p>
         ) : (
-          <ol className="mt-6 flex flex-col gap-6">
+          <ol className="mt-3 flex flex-col gap-2.5">
             {blocks.map((b) => (
               <li key={b.exId}>
-                <h2 className="text-[17px] font-semibold leading-snug">{b.name}</h2>
-                <ul className="mt-1.5 flex flex-col gap-1">
+                <h2 className="text-[14px] font-semibold leading-snug">{b.name}</h2>
+                <ul className="mt-0.5 flex flex-col gap-0">
                   {b.groups.map((g, i) => (
-                    <li key={i} className="flex items-baseline gap-3 text-[16px] tabular-nums">
+                    <li key={i} className="flex items-baseline gap-2 text-[13px] tabular-nums">
                       <span className="w-9 shrink-0 text-muted">{g.n}×</span>
                       <span className="font-semibold">{setLabel(g, b.unit)}</span>
                       {g.pr && <span className="self-center rounded-md action-fill px-1.5 py-0.5 text-[11px] font-black tracking-wide">PR</span>}
@@ -100,7 +100,7 @@ export function ShareSummary({ id }: { id: string }) {
           </ol>
         )}
 
-        <footer className="mt-8 flex flex-col items-center gap-2 border-t border-line pt-5">
+        <footer className="mt-3 flex flex-col items-center gap-1 border-t border-line pt-3">
           <Wordmark />
           <span className="text-[13px] tabular-nums text-muted">
             {blocks.length} {blocks.length === 1 ? 'exercício' : 'exercícios'} · {nSets} {nSets === 1 ? 'série' : 'séries'}
@@ -118,7 +118,7 @@ export function ShareSummary({ id }: { id: string }) {
 
 function Wordmark({ small = false, hero = false }: { small?: boolean; hero?: boolean }) {
   return (
-    <span className={`font-extrabold leading-none tracking-[-0.04em] ${small ? 'text-[18px] text-muted' : hero ? 'text-[44px]' : 'text-[36px]'}`} aria-label="Kalufit">
+    <span className={`font-extrabold leading-none tracking-[-0.04em] ${small ? 'text-[14px] text-muted' : hero ? 'text-[28px]' : 'text-[20px]'}`} aria-label="Kalufit">
       Kalu<span className="text-lime">fit</span>
     </span>
   )
