@@ -16,6 +16,8 @@ assistente (`fit kcal-day`) leem a mesma view.
   Se o peso médio de 2–3 semanas contradizer o saldo, o assistente ajusta o fator com `fit perfil --fator`.
 - **Exercício:** kcal **ativas** do relógio (`exercise_kcal`, source `relogio`), não as totais (as totais
   já incluem o basal). Por sessão (`session_id`, 1 leitura por sessão) ou do dia inteiro (sem sessão).
+  O app também grava a leitura da sessão ao tocar "Finalizar treino" (campo opcional, source `app`),
+  junto com a duração informada (vira `ended_at = started_at + minutos`).
   - Sessão feita/parcial sem leitura → **estimativa**: `(MET − 1) × kg × horas` (só o que passa do repouso).
     MET (`modality_met`): musculação 5, muay thai 10, jiu-jitsu 8, cross 8, funcional 6. Duração: início→fim
     da sessão, senão a da grade/exceção, senão a estimada da ficha, senão 60 min (teto 180).

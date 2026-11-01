@@ -114,7 +114,7 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
     if (!liveId) return
     if (!confirming) { setConfirming(true); return }
     finish.mutate({ id: liveId, status: prog.status }, {
-      onSuccess: () => { haptic([20, 40, 20]); onClose(); go(`sessao/${liveId}`) },
+      onSuccess: () => { haptic([20, 40, 20]); onClose(); go(`sessao/${liveId}/card`) },
       onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err' }),
     })
   }

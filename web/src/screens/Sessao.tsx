@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft, Check, ChevronLeft, ChevronRight, Info, Minus, PencilLine, PlayCircle, Plus, SkipForward, Timer, Trophy, Undo2,
+  ArrowLeft, Check, ChevronLeft, ChevronRight, Info, Minus, PencilLine, PlayCircle, Plus, Share2, SkipForward, Timer, Trophy, Undo2,
 } from 'lucide-react'
 import {
   useDeleteSession, useDeleteSet, useFinishSession, useLogSet, usePrevBests, usePrevSets, useSession,
-  useSessionExercises, useSessionPrs, useSessionSets, useSkipExercise, useSkips, useTemplates,
+  useSessionExercises, useSessionKcal, useSessionPrs, useSessionSets, useSkipExercise, useSkips, useTemplates,
 } from '../lib/api'
 import { go } from '../lib/router'
 import type { PrevBest, PrevSet, SetLog, TemplateExercise } from '../lib/types'
@@ -16,8 +16,9 @@ import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton, haptic, t
 import { repsLabel } from '../components/Ficha'
 import { Ring } from '../components/Ring'
 import { Big } from '../components/viz'
+import { ShareSummary } from './SessaoCard'
 
-export function Sessao({ id }: { id: string }) {
+export function Sessao({ id, card = false }: { id: string; card?: boolean }) {
   const session = useSession(id)
   const templates = useTemplates()
 
@@ -36,17 +37,17 @@ export function Sessao({ id }: { id: string }) {
       </div>
     )
   }
-  if (session.data.status !== 'em_andamento') return <Resumo id={id} />
+  if (session.data.status !== 'em_andamento') return card ? <ShareSummary id={id} /> : <Resumo id={id} />
   const template = templates.data!.find((t) => t.id === session.data!.template_id)
   if (!template) return <div className="pt-6"><ErrorState what="a ficha deste treino" /></div>
-  return <Andamento id={id} title={template.name} startedAt={session.data.started_at} exercises={template.template_exercises} />
+  return <Andamento id={id} date={session.data.date} title={template.name} startedAt={session.data.started_at} exercises={template.template_exercises} />
 }
 
 // ---------------------------------------------------------------- treino em andamento
 interface Draft { kg: number | null; reps: number | null }
 interface Rest { end: number; total: number; label: string }
 
-function Andamento({ id, title, startedAt, exercises }: { id: string; title: string; startedAt: string | null; exercises: TemplateExercise[] }) {
+function Andamento({ id, date, title, startedAt, exercises }: { id: string; date: string; title: string; startedAt: string | null; exercises: TemplateExercise[] }) {
   const sets = useSessionSets(id)
   const prev = usePrevSets(id)
   const bests = usePrevBests(id)
@@ -65,6 +66,8 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
   const [focusSet, setFocusSet] = useState<Record<string, number>>({})
   const [rest, setRest] = useRest(id)
   const [finishing, setFinishing] = useState(false)
+  const [durStr, setDurStr] = useState('')
+  const [kcalStr, setKcalStr] = useState('')
   const [tips, setTips] = useState(false)
 
   const prog = sessionProgress(exercises, logged, skipped)
@@ -163,6 +166,25 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
     if (any !== -1) pick(any)
   }
 
+  function openFinish() {
+    // duração já vem com o tempo corrido; kcal só se o relógio tiver medido
+    setDurStr(startedAt ? String(Math.max(1, Math.round((Date.now() - Date.parse(startedAt)) / 60_000))) : '')
+    setFinishing(true)
+  }
+
+  const durMin = durStr.trim() ? Number(durStr) : null
+  const kcalVal = kcalStr.trim() ? Number(kcalStr) : null
+  const durBad = durMin != null && !(Number.isInteger(durMin) && durMin >= 1 && durMin <= 300)
+  const kcalBad = kcalVal != null && !(Number.isInteger(kcalVal) && kcalVal >= 1 && kcalVal < 5000)
+
+  function doFinish() {
+    if (durBad || kcalBad) return
+    finish.mutate({ id, date, status: prog.status, startedAt, durationMin: durMin, kcal: kcalVal }, {
+      onSuccess: () => { haptic([20, 40, 20]); setRest(null); setFinishing(false); go(`sessao/${id}/card`, { replace: true }) },
+      onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err', ms: 6000 }),
+    })
+  }
+
   function pick(i: number) { setIdx(i); setTips(false); window.scrollTo({ top: 0 }) }
 
   return (
@@ -186,7 +208,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
               onClick={() => discard.mutate(id, { onSuccess: () => { setRest(null); go('hoje', { replace: true }) } })}
             >Descartar</button>
           )}
-          <Button variant="secondary" className="mr-1 h-11 px-4" onClick={() => setFinishing(true)}>Finalizar</Button>
+          <Button variant="secondary" className="mr-1 h-11 px-4" onClick={openFinish}>Finalizar</Button>
         </div>
         <nav aria-label="Exercícios" className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto px-2 lg:hidden">
           {exercises.map((t, i) => {
@@ -381,7 +403,7 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
             <span className="truncate">Próximo: {nextEx.exercises.name}</span> <ChevronRight size={22} className="shrink-0" aria-hidden="true" />
           </Button>
         ) : (
-          <Button variant={exDone ? 'primary' : 'secondary'} size="lg" onClick={() => setFinishing(true)}>Finalizar treino</Button>
+          <Button variant={exDone ? 'primary' : 'secondary'} size="lg" onClick={openFinish}>Finalizar treino</Button>
         )}
       </div>
 
@@ -409,13 +431,34 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
             : prog.status === 'feito' ? 'Fica registrado como feito.'
               : prog.nSkipped > 0 ? 'Com exercício pulado, fica como parcial.' : 'Fica como parcial. Correções vão pelo chat.'}
         </p>
+        {doneCount > 0 && (
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] text-muted">Duração (min)</span>
+              <input
+                className={`${inputCls} ${durBad ? 'border-err' : 'border-line'}`} inputMode="numeric" enterKeyHint="next" placeholder="—"
+                value={durStr} onChange={(e) => setDurStr(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-invalid={durBad || undefined} autoComplete="off"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] text-muted">kcal ativas do relógio</span>
+              <input
+                className={`${inputCls} ${kcalBad ? 'border-err' : 'border-line'}`} inputMode="numeric" enterKeyHint="done" placeholder="opcional"
+                value={kcalStr} onChange={(e) => setKcalStr(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-invalid={kcalBad || undefined} autoComplete="off"
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+              />
+            </label>
+            {(durBad || kcalBad) ? (
+              <p role="alert" className="col-span-2 -mt-1 text-sm text-err">{durBad ? 'Duração entre 1 e 300 min.' : 'kcal entre 1 e 4999.'}</p>
+            ) : (
+              <p className="col-span-2 -mt-1 text-sm text-muted">Sem kcal, Calorias estima o gasto pela duração.</p>
+            )}
+          </div>
+        )}
         <div className="mt-5 flex flex-col gap-3">
           <Button
-            variant="primary" size="xl" disabled={doneCount === 0 || finish.isPending}
-            onClick={() => finish.mutate({ id, status: prog.status }, {
-              onSuccess: () => { haptic([20, 40, 20]); setRest(null); setFinishing(false) },
-              onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err' }),
-            })}
+            variant="primary" size="xl" disabled={doneCount === 0 || finish.isPending || durBad || kcalBad}
+            onClick={doFinish}
           >
             <Check size={24} aria-hidden="true" /> Finalizar e ver resumo
           </Button>
@@ -431,6 +474,8 @@ function Andamento({ id, title, startedAt, exercises }: { id: string; title: str
     </div>
   )
 }
+
+const inputCls = 'h-14 w-full rounded-2xl border bg-bg/60 px-4 text-lg tabular-nums text-fg caret-lime outline-none transition-colors duration-150 placeholder:text-muted/70 focus:border-lime'
 
 const unitSuffix = (te: TemplateExercise) => (te.reps_unit === 'max' || te.reps_unit === 's' ? ' s' : te.reps_unit === 'm' ? ' m' : '')
 
@@ -554,6 +599,7 @@ function Resumo({ id }: { id: string }) {
   const ex = useSessionExercises(id)
   const prs = useSessionPrs(id)
   const skips = useSkips(id)
+  const kcal = useSessionKcal(id)
   const templates = useTemplates()
   const s = session.data!
   const tpl = templates.data?.find((t) => t.id === s.template_id)
@@ -592,9 +638,10 @@ function Resumo({ id }: { id: string }) {
           <div className="min-w-0 flex-1">
             <p className="text-[13px] text-muted">Volume</p>
             <Big size="lg" value={intFmt(s.volume_kg)} unit="kg" />
-            <dl className="mt-3 flex gap-5">
+            <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
               {!planned && <div><dt className="text-[13px] text-muted">Séries</dt><dd className="text-xl font-bold tabular-nums">{s.n_sets}</dd></div>}
               <div><dt className="text-[13px] text-muted">Duração</dt><dd className="text-xl font-bold tabular-nums">{s.duration_min ?? '—'}<span className="text-sm font-medium text-muted"> min</span></dd></div>
+              {kcal.data != null && <div><dt className="text-[13px] text-muted">Relógio</dt><dd className="text-xl font-bold tabular-nums text-kcal">{intFmt(kcal.data)}<span className="text-sm font-medium text-muted"> kcal</span></dd></div>}
               <div><dt className="text-[13px] text-muted">Recordes</dt><dd className={`text-xl font-bold tabular-nums ${prByEx.size ? 'text-lime' : ''}`}>{prByEx.size}</dd></div>
               {nSkipped > 0 && <div><dt className="text-[13px] text-muted">Pulados</dt><dd className="text-xl font-bold tabular-nums">{nSkipped}</dd></div>}
             </dl>
@@ -657,6 +704,7 @@ function Resumo({ id }: { id: string }) {
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
+        <Button size="lg" className="col-span-2" onClick={() => go(`sessao/${id}/card`)}><Share2 size={20} aria-hidden="true" /> Resumo para compartilhar</Button>
         <Button size="lg" onClick={() => go('evolucao')}>Ver evolução</Button>
         <Button variant="primary" size="lg" onClick={() => go('hoje')}>Voltar ao Hoje</Button>
       </div>
