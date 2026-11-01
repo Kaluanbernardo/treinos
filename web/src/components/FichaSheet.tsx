@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Check, ChevronDown, Flame, Play, PlayCircle, SkipForward, Undo2 } from 'lucide-react'
 import {
-  useActiveSession, useDeleteSet, useExerciseSessions, useFinishSession, useLogSet, usePrevBests, useSessionSets,
+  useActiveSession, useDeleteSet, useExerciseSessions, useLogSet, usePrevBests, useSessionSets,
   useSessions, useSkipExercise, useSkips, useStartSession, useToday,
 } from '../lib/api'
 import { go } from '../lib/router'
@@ -34,13 +34,11 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
   const today = useToday()
   const exHist = useExerciseSessions()
   const start = useStartSession()
-  const finish = useFinishSession()
   const logSet = useLogSet()
   const skip = useSkipExercise()
   const [createdId, setCreatedId] = useState<string | null>(null)
   const creating = useRef<Promise<string> | null>(null)
   const [openId, setOpenId] = useState<string | null | undefined>(undefined) // undefined = segue o primeiro em aberto
-  const [confirming, setConfirming] = useState(false)
 
   const mine = active.data?.template_id === template.id ? active.data : null
   const other = active.data && !mine ? active.data : null
@@ -88,7 +86,6 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
     logSet.mutate(row, { onError: () => toast('Sem conexão: a série não foi salva. Toque de novo.', { tone: 'err', ms: 6000 }) })
     if (isPr) toast(`PR! ${ex.name}: ${kgFmt(kg)} kg × ${reps}`, { tone: 'lime' })
     if (exSets.length + 1 >= te.sets) setOpenId(undefined)
-    setConfirming(false)
   }
 
   async function setSkip(te: TemplateExercise, next: boolean) {
@@ -102,7 +99,6 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
       setOpenId(undefined)
       toast(`${te.exercises.name}: pulado.`, { action: { label: 'Desfazer', run: () => setSkip(te, false) } })
     }
-    setConfirming(false)
   }
 
   function undo(s: SetLog) {
@@ -110,13 +106,11 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
     delSet.mutate(s.id, { onError: () => toast('Não consegui desfazer. Tente de novo.', { tone: 'err' }) })
   }
 
+  // fecha pela mesma folha do modo treino: duração e kcal do relógio são obrigatórias lá
   function onFinish() {
     if (!liveId) return
-    if (!confirming) { setConfirming(true); return }
-    finish.mutate({ id: liveId, status: prog.status }, {
-      onSuccess: () => { haptic([20, 40, 20]); onClose(); go(`sessao/${liveId}/card`) },
-      onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err' }),
-    })
+    onClose()
+    go(`sessao/${liveId}/finalizar`)
   }
 
   async function guided() {
@@ -174,16 +168,11 @@ function FichaBody({ template, onClose }: { template: Template; onClose: () => v
 
       {!readOnly && (
         <div className="sticky -bottom-5 -mx-5 mt-2 border-t border-line bg-card px-5 pt-4 pb-5">
-          {confirming && (
-            <p className="mb-3 text-[15px] tabular-nums text-muted" role="status">
-              {prog.done}/{prog.target} séries{prog.nSkipped > 0 && ` · ${prog.nSkipped} ${prog.nSkipped === 1 ? 'pulado' : 'pulados'}`} · fica como <b className="font-semibold text-fg">{prog.status}</b>
-            </p>
-          )}
           {prog.done > 0 && liveId ? (
             <div className="grid grid-cols-[auto_1fr] gap-3">
               <Button size="xl" onClick={guided} aria-label="Abrir modo treino"><Play size={22} aria-hidden="true" /></Button>
-              <Button variant="primary" size="xl" onClick={onFinish} disabled={finish.isPending}>
-                <Check size={24} strokeWidth={3} aria-hidden="true" /> {confirming ? 'Confirmar' : 'Finalizar'}
+              <Button variant="primary" size="xl" onClick={onFinish}>
+                <Check size={24} strokeWidth={3} aria-hidden="true" /> Finalizar
               </Button>
             </div>
           ) : (

@@ -43,7 +43,7 @@ export default function App() {
     <AppShell active={active} fullscreen={fullscreen}>
       {route.name === 'hoje' && <Hoje />}
       {route.name === 'treino' && <Treino />}
-      {route.name === 'sessao' && <Sessao id={route.id} card={route.card} />}
+      {route.name === 'sessao' && <Sessao id={route.id} card={route.card} finish={route.finish} />}
       {route.name === 'evolucao' && <Evolucao />}
       {route.name === 'nutricao' && <Nutricao />}
       {route.name === 'agenda' && <Agenda />}

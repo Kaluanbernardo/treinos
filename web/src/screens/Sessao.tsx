@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type Ref } from 'react'
 import {
-  ArrowLeft, Check, ChevronLeft, ChevronRight, Info, Minus, PencilLine, PlayCircle, Plus, Share2, SkipForward, Timer, Trophy, Undo2,
+  ArrowLeft, Check, ChevronLeft, ChevronRight, CircleAlert, Info, Minus, PencilLine, PlayCircle, Plus, Share2, SkipForward, Timer, Trophy, Undo2,
 } from 'lucide-react'
 import {
-  useDeleteSession, useDeleteSet, useFinishSession, useLogSet, usePrevBests, usePrevSets, useSession,
+  useDeleteSession, useDeleteSet, useEditSessionStats, useFinishSession, useLogSet, usePrevBests, usePrevSets, useSession,
   useSessionExercises, useSessionKcal, useSessionPrs, useSessionSets, useSkipExercise, useSkips, useTemplates,
 } from '../lib/api'
 import { go } from '../lib/router'
@@ -18,7 +18,7 @@ import { Ring } from '../components/Ring'
 import { Big } from '../components/viz'
 import { ShareSummary } from './SessaoCard'
 
-export function Sessao({ id, card = false }: { id: string; card?: boolean }) {
+export function Sessao({ id, card = false, finish = false }: { id: string; card?: boolean; finish?: boolean }) {
   const session = useSession(id)
   const templates = useTemplates()
 
@@ -40,14 +40,16 @@ export function Sessao({ id, card = false }: { id: string; card?: boolean }) {
   if (session.data.status !== 'em_andamento') return card ? <ShareSummary id={id} /> : <Resumo id={id} />
   const template = templates.data!.find((t) => t.id === session.data!.template_id)
   if (!template) return <div className="pt-6"><ErrorState what="a ficha deste treino" /></div>
-  return <Andamento id={id} date={session.data.date} title={template.name} startedAt={session.data.started_at} exercises={template.template_exercises} />
+  return <Andamento id={id} date={session.data.date} title={template.name} startedAt={session.data.started_at} exercises={template.template_exercises} autoFinish={finish} />
 }
 
 // ---------------------------------------------------------------- treino em andamento
 interface Draft { kg: number | null; reps: number | null }
 interface Rest { end: number; total: number; label: string }
 
-function Andamento({ id, date, title, startedAt, exercises }: { id: string; date: string; title: string; startedAt: string | null; exercises: TemplateExercise[] }) {
+function Andamento({ id, date, title, startedAt, exercises, autoFinish }: {
+  id: string; date: string; title: string; startedAt: string | null; exercises: TemplateExercise[]; autoFinish: boolean
+}) {
   const sets = useSessionSets(id)
   const prev = usePrevSets(id)
   const bests = usePrevBests(id)
@@ -68,9 +70,17 @@ function Andamento({ id, date, title, startedAt, exercises }: { id: string; date
   const [finishing, setFinishing] = useState(false)
   const [durStr, setDurStr] = useState('')
   const [kcalStr, setKcalStr] = useState('')
+  const [tried, setTried] = useState(false)
   const [tips, setTips] = useState(false)
 
   const prog = sessionProgress(exercises, logged, skipped)
+
+  // #/sessao/<id>/finalizar (Finalizar na ficha): abre direto a folha; a URL volta a ser a do treino
+  useEffect(() => {
+    if (!autoFinish) return
+    go(`sessao/${id}`, { replace: true })
+    openFinish()
+  }, [autoFinish])
 
   // abre no primeiro exercício com séries pendentes (pulados não contam)
   useEffect(() => {
@@ -167,19 +177,17 @@ function Andamento({ id, date, title, startedAt, exercises }: { id: string; date
   }
 
   function openFinish() {
-    // duração já vem com o tempo corrido; kcal só se o relógio tiver medido
+    // duração já vem com o tempo corrido (editável); kcal do relógio é digitada na hora
+    // (treino esquecido aberto passa de 300 min e já aparece como erro, pedindo a duração real)
     setDurStr(startedAt ? String(Math.max(1, Math.round((Date.now() - Date.parse(startedAt)) / 60_000))) : '')
+    setTried(false)
     setFinishing(true)
   }
 
-  const durMin = durStr.trim() ? Number(durStr) : null
-  const kcalVal = kcalStr.trim() ? Number(kcalStr) : null
-  const durBad = durMin != null && !(Number.isInteger(durMin) && durMin >= 1 && durMin <= 300)
-  const kcalBad = kcalVal != null && !(Number.isInteger(kcalVal) && kcalVal >= 1 && kcalVal < 5000)
-
   function doFinish() {
-    if (durBad || kcalBad) return
-    finish.mutate({ id, date, status: prog.status, startedAt, durationMin: durMin, kcal: kcalVal }, {
+    const c = statsCheck(durStr, kcalStr)
+    if (!c.ok) { setTried(true); haptic([10, 40, 10]); return }
+    finish.mutate({ id, date, status: prog.status, startedAt, durationMin: c.dur, kcal: c.kcal }, {
       onSuccess: () => { haptic([20, 40, 20]); setRest(null); setFinishing(false); go(`sessao/${id}/card`, { replace: true }) },
       onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err', ms: 6000 }),
     })
@@ -411,13 +419,20 @@ function Andamento({ id, date, title, startedAt, exercises }: { id: string; date
       </div>
       </div>
 
-      <Sheet open={finishing} onClose={() => setFinishing(false)} title="Finalizar treino?">
-        <div className="flex items-center gap-4">
-          <Ring value={doneCount} target={planned} color="var(--color-lime)" size={96} stroke={10} label={`${doneCount} de ${planned} séries`}>
-            <span className="text-2xl font-bold tabular-nums">{Math.round((doneCount / Math.max(1, planned)) * 100)}%</span>
+      <Sheet open={finishing} onClose={() => setFinishing(false)} title="Finalizar treino">
+        {/* duração e kcal do relógio primeiro: são o que falta digitar; o resto é conferência */}
+        {doneCount > 0 && (
+          <StatsFields
+            durStr={durStr} kcalStr={kcalStr} onDur={setDurStr} onKcal={setKcalStr}
+            tried={tried} focusKcal={finishing} onSubmit={doFinish}
+          />
+        )}
+        <div className={`flex items-center gap-4 ${doneCount > 0 ? 'mt-5 border-t border-line pt-5' : ''}`}>
+          <Ring value={doneCount} target={planned} color="var(--color-lime)" size={72} stroke={8} label={`${doneCount} de ${planned} séries`}>
+            <span className="text-lg font-bold tabular-nums">{Math.round((doneCount / Math.max(1, planned)) * 100)}%</span>
           </Ring>
-          <div>
-            <Big size="md" value={doneCount} unit={`/${planned} séries`} />
+          <div className="min-w-0">
+            <Big size="sm" value={doneCount} unit={`/${planned} séries`} />
             <p className="mt-1 text-[15px] tabular-nums text-muted">{intFmt(volume)} kg de volume</p>
             {prog.nSkipped > 0 && (
               <p className="mt-1 flex items-center gap-1.5 text-[15px] tabular-nums text-muted">
@@ -426,38 +441,14 @@ function Andamento({ id, date, title, startedAt, exercises }: { id: string; date
             )}
           </div>
         </div>
-        <p className="mt-4 text-[15px] text-muted">
+        <p className="mt-3 text-[15px] text-muted">
           {doneCount === 0 ? 'Nenhuma série registrada: dá para descartar.'
             : prog.status === 'feito' ? 'Fica registrado como feito.'
               : prog.nSkipped > 0 ? 'Com exercício pulado, fica como parcial.' : 'Fica como parcial. Correções vão pelo chat.'}
         </p>
-        {doneCount > 0 && (
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[13px] text-muted">Duração (min)</span>
-              <input
-                className={`${inputCls} ${durBad ? 'border-err' : 'border-line'}`} inputMode="numeric" enterKeyHint="next" placeholder="—"
-                value={durStr} onChange={(e) => setDurStr(e.target.value.replace(/\D/g, '').slice(0, 3))} aria-invalid={durBad || undefined} autoComplete="off"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[13px] text-muted">kcal ativas do relógio</span>
-              <input
-                className={`${inputCls} ${kcalBad ? 'border-err' : 'border-line'}`} inputMode="numeric" enterKeyHint="done" placeholder="opcional"
-                value={kcalStr} onChange={(e) => setKcalStr(e.target.value.replace(/\D/g, '').slice(0, 4))} aria-invalid={kcalBad || undefined} autoComplete="off"
-                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-              />
-            </label>
-            {(durBad || kcalBad) ? (
-              <p role="alert" className="col-span-2 -mt-1 text-sm text-err">{durBad ? 'Duração entre 1 e 300 min.' : 'kcal entre 1 e 4999.'}</p>
-            ) : (
-              <p className="col-span-2 -mt-1 text-sm text-muted">Sem kcal, Calorias estima o gasto pela duração.</p>
-            )}
-          </div>
-        )}
         <div className="mt-5 flex flex-col gap-3">
           <Button
-            variant="primary" size="xl" disabled={doneCount === 0 || finish.isPending || durBad || kcalBad}
+            variant="primary" size="xl" disabled={doneCount === 0 || finish.isPending}
             onClick={doFinish}
           >
             <Check size={24} aria-hidden="true" /> Finalizar e ver resumo
@@ -475,7 +466,81 @@ function Andamento({ id, date, title, startedAt, exercises }: { id: string; date
   )
 }
 
-const inputCls = 'h-14 w-full rounded-2xl border bg-bg/60 px-4 text-lg tabular-nums text-fg caret-lime outline-none transition-colors duration-150 placeholder:text-muted/70 focus:border-lime'
+// ---------------------------------------------------------------- duração + kcal do relógio
+/** Duração e kcal ativas do relógio são obrigatórias ao fechar (ou corrigir) um treino: alimentam Calorias. */
+function statsCheck(durStr: string, kcalStr: string) {
+  const dur = durStr.trim() ? Number(durStr) : null
+  const kcal = kcalStr.trim() ? Number(kcalStr) : null
+  const durErr = dur == null ? 'Informe a duração do treino.'
+    : !(Number.isInteger(dur) && dur >= 1 && dur <= 300) ? 'Duração entre 1 e 300 min.' : null
+  const kcalErr = kcal == null ? 'Informe as kcal ativas do relógio.'
+    : !(Number.isInteger(kcal) && kcal >= 1 && kcal < 5000) ? 'kcal entre 1 e 4999.' : null
+  return { dur: dur ?? 0, kcal: kcal ?? 0, durErr, kcalErr, ok: !durErr && !kcalErr, durEmpty: dur == null, kcalEmpty: kcal == null }
+}
+
+/**
+ * Os dois campos grandes do fim do treino. Campo vazio só acusa erro depois de tentar salvar
+ * (`tried`); valor fora da faixa acusa na hora.
+ */
+function StatsFields({ durStr, kcalStr, onDur, onKcal, tried, focusKcal, onSubmit }: {
+  durStr: string; kcalStr: string; onDur: (v: string) => void; onKcal: (v: string) => void
+  tried: boolean; focusKcal: boolean; onSubmit: () => void
+}) {
+  const kcalRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!focusKcal) return
+    // depois do showModal do Sheet, que foca o próprio diálogo
+    const t = setTimeout(() => kcalRef.current?.focus({ preventScroll: true }), 80)
+    return () => clearTimeout(t)
+  }, [focusKcal])
+  const c = statsCheck(durStr, kcalStr)
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3">
+        <StatField
+          label="Duração" unit="min" value={durStr} maxLen={3} enterKeyHint="next"
+          error={c.durErr && (tried || !c.durEmpty) ? c.durErr : null}
+          onChange={onDur} onEnter={() => kcalRef.current?.focus()}
+        />
+        <StatField
+          ref={kcalRef} label="kcal do relógio" unit="kcal" value={kcalStr} maxLen={4} enterKeyHint="done"
+          error={c.kcalErr && (tried || !c.kcalEmpty) ? c.kcalErr : null}
+          onChange={onKcal} onEnter={onSubmit}
+        />
+      </div>
+      <p className="mt-2 text-sm text-muted">Use as kcal <b className="font-semibold text-fg">ativas</b> do treino, não as totais.</p>
+    </div>
+  )
+}
+
+function StatField({ ref, label, unit, value, maxLen, enterKeyHint, error, onChange, onEnter }: {
+  ref?: Ref<HTMLInputElement>; label: string; unit: string; value: string; maxLen: number
+  enterKeyHint: 'next' | 'done'; error: string | null; onChange: (v: string) => void; onEnter: () => void
+}) {
+  const id = useId()
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label htmlFor={id} className="text-[15px] font-semibold">{label}</label>
+      <div className={`flex h-16 items-center gap-1.5 rounded-2xl bg-bg/60 px-4 transition-shadow duration-150 ${
+        error ? 'ring-2 ring-err' : 'ring-1 ring-line focus-within:ring-2 focus-within:ring-lime'}`}>
+        <input
+          ref={ref} id={id} inputMode="numeric" enterKeyHint={enterKeyHint} autoComplete="off" placeholder="—"
+          value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, maxLen))}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onEnter() } }}
+          aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-err` : undefined}
+          className="h-full w-full min-w-0 bg-transparent text-[32px] font-bold tabular-nums text-fg caret-lime outline-none placeholder:text-muted/70"
+        />
+        <span className="shrink-0 text-base font-medium text-muted" aria-hidden="true">{unit}</span>
+      </div>
+      {error && (
+        <p id={`${id}-err`} role="alert" className="flex items-start gap-1.5 text-sm font-medium text-err">
+          <CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" /> {error}
+        </p>
+      )}
+    </div>
+  )
+}
 
 const unitSuffix = (te: TemplateExercise) => (te.reps_unit === 'max' || te.reps_unit === 's' ? ' s' : te.reps_unit === 'm' ? ' m' : '')
 
@@ -594,6 +659,18 @@ function RestBar({ rest, onChange }: { rest: Rest | null; onChange: (r: Rest | n
 }
 
 // ---------------------------------------------------------------- resumo
+/** Um número do resumo: valor e unidade numa célula só, sem quebra de linha. */
+function Stat({ label, value, unit, tone = '' }: { label: string; value: string | number; unit?: string; tone?: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[13px] text-muted">{label}</dt>
+      <dd className={`whitespace-nowrap text-xl font-bold tabular-nums ${tone}`}>
+        {value}{unit && <span className="ml-1 text-sm font-medium text-muted">{unit}</span>}
+      </dd>
+    </div>
+  )
+}
+
 function Resumo({ id }: { id: string }) {
   const session = useSession(id)
   const ex = useSessionExercises(id)
@@ -601,6 +678,11 @@ function Resumo({ id }: { id: string }) {
   const skips = useSkips(id)
   const kcal = useSessionKcal(id)
   const templates = useTemplates()
+  const editStats = useEditSessionStats()
+  const [editing, setEditing] = useState(false)
+  const [durStr, setDurStr] = useState('')
+  const [kcalStr, setKcalStr] = useState('')
+  const [tried, setTried] = useState(false)
   const s = session.data!
   const tpl = templates.data?.find((t) => t.id === s.template_id)
   const order = tpl?.template_exercises.map((t) => t.exercises.id) ?? []
@@ -613,6 +695,25 @@ function Resumo({ id }: { id: string }) {
   for (const p of prs.data ?? []) {
     const cur = prByEx.get(p.exercise_id)
     if (!cur || p.kg > cur.kg) prByEx.set(p.exercise_id, { kg: p.kg, reps: p.reps })
+  }
+  const canEdit = s.status === 'feito' || s.status === 'parcial'
+  const statsMissing = s.duration_min == null || (!kcal.isPending && kcal.data == null)
+  const volStr = intFmt(s.volume_kg)
+
+  function openEdit() {
+    setDurStr(s.duration_min != null ? String(s.duration_min) : '')
+    setKcalStr(kcal.data != null ? String(kcal.data) : '')
+    setTried(false)
+    setEditing(true)
+  }
+
+  function saveEdit() {
+    const c = statsCheck(durStr, kcalStr)
+    if (!c.ok) { setTried(true); haptic([10, 40, 10]); return }
+    editStats.mutate({ id, date: s.date, startedAt: s.started_at, endedAt: s.ended_at, durationMin: c.dur, kcal: c.kcal }, {
+      onSuccess: () => { haptic(15); setEditing(false); toast('Duração e kcal salvas.') },
+      onError: (e) => toast(`Não salvou: ${e.message}`, { tone: 'err', ms: 6000 }),
+    })
   }
 
   return (
@@ -637,17 +738,42 @@ function Resumo({ id }: { id: string }) {
           ) : null}
           <div className="min-w-0 flex-1">
             <p className="text-[13px] text-muted">Volume</p>
-            <Big size="lg" value={intFmt(s.volume_kg)} unit="kg" />
-            <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-              {!planned && <div><dt className="text-[13px] text-muted">Séries</dt><dd className="text-xl font-bold tabular-nums">{s.n_sets}</dd></div>}
-              <div><dt className="text-[13px] text-muted">Duração</dt><dd className="text-xl font-bold tabular-nums">{s.duration_min ?? '—'}<span className="text-sm font-medium text-muted"> min</span></dd></div>
-              {kcal.data != null && <div><dt className="text-[13px] text-muted">Relógio</dt><dd className="text-xl font-bold tabular-nums text-kcal">{intFmt(kcal.data)}<span className="text-sm font-medium text-muted"> kcal</span></dd></div>}
-              <div><dt className="text-[13px] text-muted">Recordes</dt><dd className={`text-xl font-bold tabular-nums ${prByEx.size ? 'text-lime' : ''}`}>{prByEx.size}</dd></div>
-              {nSkipped > 0 && <div><dt className="text-[13px] text-muted">Pulados</dt><dd className="text-xl font-bold tabular-nums">{nSkipped}</dd></div>}
-            </dl>
+            {/* valor e unidade sempre juntos, sem quebrar; volume de 5+ dígitos desce um tamanho */}
+            <Big size={volStr.length > 5 ? 'md' : 'lg'} value={volStr} unit="kg" className="whitespace-nowrap" />
           </div>
         </div>
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 sm:grid-cols-4">
+          {!planned && <Stat label="Séries" value={s.n_sets} />}
+          <Stat label="Duração" value={s.duration_min ?? '—'} unit="min" />
+          <Stat label="Relógio" value={kcal.data != null ? intFmt(kcal.data) : '—'} unit="kcal" tone={kcal.data != null ? 'text-kcal' : ''} />
+          <Stat label="Recordes" value={prByEx.size} tone={prByEx.size ? 'text-lime' : ''} />
+          {nSkipped > 0 && <Stat label="Pulados" value={nSkipped} />}
+        </dl>
+        {canEdit && (
+          statsMissing ? (
+            <Button className="mt-4 w-full" onClick={openEdit}>
+              <PencilLine size={18} aria-hidden="true" /> Adicionar duração e kcal do relógio
+            </Button>
+          ) : (
+            <Button variant="ghost" className="-ml-2 mt-2" onClick={openEdit}>
+              <PencilLine size={18} aria-hidden="true" /> Corrigir duração e kcal
+            </Button>
+          )
+        )}
       </Card>
+
+      <Sheet open={editing} onClose={() => setEditing(false)} title="Duração e kcal do relógio">
+        <StatsFields
+          durStr={durStr} kcalStr={kcalStr} onDur={setDurStr} onKcal={setKcalStr}
+          tried={tried} focusKcal={editing} onSubmit={saveEdit}
+        />
+        <div className="mt-5 flex flex-col gap-3">
+          <Button variant="primary" size="xl" disabled={editStats.isPending} onClick={saveEdit}>
+            <Check size={24} aria-hidden="true" /> Salvar
+          </Button>
+          <Button size="lg" onClick={() => setEditing(false)}>Cancelar</Button>
+        </div>
+      </Sheet>
 
       {prByEx.size > 0 && (
         <Card className="ring-1 ring-lime/40">

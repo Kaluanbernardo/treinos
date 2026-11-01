@@ -57,19 +57,20 @@ export function ShareSummary({ id }: { id: string }) {
         <p className="text-sm text-muted">Tire um print para compartilhar.</p>
       </div>
 
-      <article aria-label={`Resumo do treino ${s.title}`} className="mt-2 rounded-[24px] bg-card px-6 pt-6 pb-5">
-        <header><Wordmark /></header>
+      <article aria-label={`Resumo do treino ${s.title}`} className="mt-2 rounded-[24px] bg-card px-6 pt-8 pb-5">
+        <header className="flex justify-center"><Wordmark /></header>
 
-        <p className="mt-10 text-[15px] text-muted">{capitalize(longDay(s.date))}</p>
-        <h1 className="mt-1 text-[34px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{s.title}</h1>
-        {s.status === 'parcial' && <Badge tone="warn" className="mt-3">treino parcial</Badge>}
+        <p className="mt-8 text-center text-[15px] text-muted">{capitalize(longDay(s.date))}</p>
+        <h1 className="mt-1 text-center text-[34px] font-bold leading-[1.05] tracking-[-0.02em] [text-wrap:balance]">{s.title}</h1>
+        {s.status === 'parcial' && <div className="mt-3 flex justify-center"><Badge tone="warn">treino parcial</Badge></div>}
 
-        <dl className="mt-7 grid grid-cols-3 divide-x divide-line border-y border-line py-4">
+        <dl className="mt-7 grid grid-cols-3 gap-2 border-y border-line py-5">
           {stats.map((st) => (
-            <div key={st.label} className="px-3 first:pl-0">
-              <dt className="text-[13px] text-muted">{st.label}</dt>
-              <dd className={`mt-1 text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums ${st.tone ?? ''}`}>
-                {st.value}{st.unit && <span className="ml-1 text-sm font-medium tracking-normal text-muted">{st.unit}</span>}
+            <div key={st.label} className="min-w-0 text-center">
+              <dt className="text-[12px] text-muted">{st.label}</dt>
+              <dd className={`mt-1.5 text-[22px] font-bold leading-none tracking-[-0.02em] tabular-nums ${st.tone ?? ''}`}>
+                {st.value}
+                {st.unit ? <span className="ml-1 text-[12px] font-medium tracking-normal text-muted">{st.unit}</span> : null}
               </dd>
             </div>
           ))}
@@ -106,8 +107,8 @@ export function ShareSummary({ id }: { id: string }) {
           </ol>
         )}
 
-        <footer className="mt-8 flex items-center justify-between gap-3 border-t border-line pt-4">
-          <Wordmark small />
+        <footer className="mt-8 flex flex-col items-center gap-2 border-t border-line pt-5">
+          <Wordmark />
           <span className="text-[13px] tabular-nums text-muted">
             {blocks.length} {blocks.length === 1 ? 'exercício' : 'exercícios'} · {nSets} {nSets === 1 ? 'série' : 'séries'}
           </span>
@@ -124,7 +125,7 @@ export function ShareSummary({ id }: { id: string }) {
 
 function Wordmark({ small = false }: { small?: boolean }) {
   return (
-    <span className={`font-extrabold leading-none tracking-[-0.03em] ${small ? 'text-[15px] text-muted' : 'text-[22px]'}`} aria-label="Kalufit">
+    <span className={`font-extrabold leading-none tracking-[-0.04em] ${small ? 'text-[18px] text-muted' : 'text-[36px]'}`} aria-label="Kalufit">
       Kalu<span className="text-lime">fit</span>
     </span>
   )

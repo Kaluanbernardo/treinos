@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react'
 
-/** Roteamento por hash (#/treino, #/sessao/<id>, #/sessao/<id>/card): funciona no GitHub Pages sem 404 e no PWA. */
+/** Roteamento por hash (#/treino, #/sessao/<id>, #/sessao/<id>/card, #/sessao/<id>/finalizar): funciona no GitHub Pages sem 404 e no PWA. */
 export type Route =
   | { name: 'hoje' }
   | { name: 'treino' }
-  | { name: 'sessao'; id: string; card?: boolean }
+  | { name: 'sessao'; id: string; card?: boolean; finish?: boolean }
   | { name: 'evolucao' }
   | { name: 'nutricao' }
   | { name: 'agenda' }
@@ -29,7 +29,7 @@ export function parse(hash: string): Route {
     case 'config':
       return { name }
     case 'sessao':
-      return id ? { name: 'sessao', id, card: sub === 'card' } : { name: 'treino' }
+      return id ? { name: 'sessao', id, card: sub === 'card', finish: sub === 'finalizar' } : { name: 'treino' }
     default:
       return { name: 'hoje' }
   }

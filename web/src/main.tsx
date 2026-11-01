@@ -7,7 +7,17 @@ import './lib/theme' // acompanha prefers-color-scheme ao vivo quando o tema é 
 import '@fontsource-variable/inter'
 import './index.css'
 
-registerSW({ immediate: true })
+// autoUpdate recarrega sozinho quando o SW novo assume. O PWA fica dias aberto no celular, então
+// também procura versão nova ao voltar para o app (e de hora em hora), não só no primeiro load.
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, reg) {
+    if (!reg) return
+    const check = () => { if (navigator.onLine) reg.update().catch(() => {}) }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check() })
+    setInterval(check, 60 * 60 * 1000)
+  },
+})
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 2, refetchOnWindowFocus: true } },

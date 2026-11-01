@@ -251,14 +251,7 @@ export function useFinishSession() {
       }
       const { error } = await db().from('sessions').update(patch).eq('id', v.id)
       if (error) throw new Error(error.message)
-      if (v.kcal != null && v.date) {
-        // índice único parcial (session_id where not null): upsert do PostgREST não o enxerga
-        const cur = await one<{ id: string }>(db().from('exercise_kcal').select('id').eq('session_id', v.id).limit(1))
-        const { error: e2 } = cur
-          ? await db().from('exercise_kcal').update({ kcal: v.kcal, date: v.date, source: 'app' }).eq('id', cur.id)
-          : await db().from('exercise_kcal').insert({ session_id: v.id, date: v.date, kcal: v.kcal, source: 'app' })
-        if (e2) throw new Error(`treino salvo, mas as kcal não: ${e2.message}`)
-      }
+      if (v.kcal != null && v.date) await saveSessionKcal(v.id, v.date, v.kcal, 'treino salvo, mas as kcal não')
       return patch
     },
     onSuccess: (patch, v) => {
@@ -268,6 +261,59 @@ export function useFinishSession() {
         duration_min: v.durationMin ?? (old.started_at ? Math.round((Date.parse(patch.ended_at as string) - Date.parse(old.started_at)) / 60_000) : null),
       } : old))
       if (v.kcal != null && v.date) qc.setQueryData(['session_kcal', v.id], v.kcal)
+    },
+    onSettled: (_d, _e, v) => {
+      invalidateTraining(qc)
+      qc.invalidateQueries({ queryKey: ['session_kcal', v.id] })
+    },
+  })
+}
+
+/** Grava as kcal do relógio da sessão (uma linha por session_id em exercise_kcal). */
+async function saveSessionKcal(sessionId: string, date: string, kcal: number, failMsg: string) {
+  // índice único parcial (session_id where not null): upsert do PostgREST não o enxerga
+  const cur = await one<{ id: string }>(db().from('exercise_kcal').select('id').eq('session_id', sessionId).limit(1))
+  const { error } = cur
+    ? await db().from('exercise_kcal').update({ kcal, date, source: 'app' }).eq('id', cur.id)
+    : await db().from('exercise_kcal').insert({ session_id: sessionId, date, kcal, source: 'app' })
+  if (error) throw new Error(`${failMsg}: ${error.message}`)
+}
+
+export interface SessionStatsInput {
+  id: string
+  date: string
+  startedAt: string | null
+  endedAt: string | null
+  durationMin: number
+  kcal: number
+}
+
+/**
+ * Corrige duração e kcal do relógio de um treino já fechado (tela de resumo). A duração ancora no
+ * started_at (ended_at = início + minutos); sem início, no ended_at; sem nenhum dos dois (registro
+ * pelo chat), termina agora se for de hoje, senão começa ao meio-dia do dia do treino.
+ */
+export function useEditSessionStats() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: SessionStatsInput) => {
+      const ms = v.durationMin * 60_000
+      const iso = (t: number) => new Date(t).toISOString()
+      let patch: { started_at: string; ended_at: string }
+      if (v.startedAt) patch = { started_at: v.startedAt, ended_at: iso(Date.parse(v.startedAt) + ms) }
+      else if (v.endedAt) patch = { started_at: iso(Date.parse(v.endedAt) - ms), ended_at: v.endedAt }
+      else {
+        const end = v.date === todaySP() ? Date.now() : Date.parse(`${v.date}T12:00:00-03:00`) + ms
+        patch = { started_at: iso(end - ms), ended_at: iso(end) }
+      }
+      const { error } = await db().from('sessions').update(patch).eq('id', v.id)
+      if (error) throw new Error(error.message)
+      await saveSessionKcal(v.id, v.date, v.kcal, 'duração salva, mas as kcal não')
+      return patch
+    },
+    onSuccess: (patch, v) => {
+      qc.setQueryData<SessionRow | null>(['session', v.id], (old) => (old ? { ...old, ...patch, duration_min: v.durationMin } : old))
+      qc.setQueryData(['session_kcal', v.id], v.kcal)
     },
     onSettled: (_d, _e, v) => {
       invalidateTraining(qc)
