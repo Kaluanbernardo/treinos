@@ -16,7 +16,7 @@ import { Ring } from './Ring'
 
 /**
  * Ficha com registro direto: carga × reps por série, ✓ e pular, sem abrir o modo treino.
- * O primeiro registro cria a sessão de hoje (ligada ao horário da grade, se houver); depois continua nela.
+ * O primeiro registro cria a sessão de hoje (ligada ao item do plano, se o casamento for único); depois continua nela.
  */
 export function FichaSheet({ template, onClose }: { template: Template | null; onClose: () => void }) {
   return (

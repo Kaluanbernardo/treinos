@@ -72,6 +72,73 @@ expect_eq "qui 29/10: muay pulado"         postgres - \
 expect_eq "seg 02/11 volta à grade base"   postgres - \
   "select string_agg(title, ',' order by start_time) from plan_between('2026-11-02','2026-11-02')" "Superior A,Muay thai"
 
+# Sessão sem slot/override conta no status do dia (home). Cada expect_eq faz rollback.
+DAY_STATUS_SQL="
+insert into schedule_overrides (date, action, start_time, duration_min, modality, title, source)
+values ('2026-11-01', 'add', '10:00', 60, 'musculacao', 'Extra', 'bot'),
+       ('2026-11-01', 'add', '19:00', 60, 'muay_thai', 'Muay extra', 'bot');
+insert into sessions (date, modality, template_id, status, started_at, source)
+select '2026-11-01', 'musculacao', id, 'feito', '2026-11-01 11:00:00-03', 'app'
+from workout_templates where slug = 'inferiores_b';
+insert into schedule_overrides (date, action, start_time, duration_min, modality, template_id, title, source)
+select '2026-11-08', 'add', '08:00', 60, 'musculacao', id, 'Superior A', 'bot' from workout_templates where slug = 'superior_a';
+insert into schedule_overrides (date, action, start_time, duration_min, modality, title, source)
+values ('2026-11-08', 'add', '18:00', 60, 'musculacao', 'Extra', 'bot');
+insert into sessions (date, modality, template_id, status, started_at, source)
+select '2026-11-08', 'musculacao', id, 'feito', '2026-11-08 18:20:00-03', 'app'
+from workout_templates where slug = 'inferiores_b';
+insert into schedule_overrides (date, action, start_time, duration_min, modality, template_id, title, source)
+select '2026-11-15', 'add', '10:00', 60, 'musculacao', id, 'Inferiores B', 'bot' from workout_templates where slug = 'inferiores_b';
+insert into sessions (date, modality, template_id, status, started_at, source)
+select '2026-11-15', 'musculacao', id, 'feito', '2026-11-15 10:05:00-03', 'app'
+from workout_templates where slug = 'inferiores_b';
+insert into sessions (date, modality, template_id, slot_id, status, source)
+select '2026-10-30', modality, template_id, id, 'feito', 'app'
+from schedule_slots where weekday = 5 and start_time = '06:00' and active;
+insert into sessions (date, modality, status, started_at, source)
+values ('2026-11-03', 'muay_thai', 'feito', '2026-11-03 19:00:00-03', 'app');
+insert into schedule_overrides (date, action, start_time, duration_min, modality, title, source)
+values ('2026-11-22', 'add', '10:00', 60, 'musculacao', 'Extra', 'bot');
+insert into sessions (date, modality, template_id, status, started_at, source)
+select '2026-11-22', 'musculacao', id, 'faltou', '2026-11-22 10:00:00-03', 'app'
+from workout_templates where slug = 'superior_a';
+insert into schedule_overrides (date, action, start_time, duration_min, modality, title, source)
+values ('2026-11-29', 'add', '10:00', 60, 'musculacao', 'Extra', 'bot');
+insert into sessions (date, modality, template_id, status, started_at, source)
+select '2026-11-29', 'musculacao', id, 'parcial', '2026-11-29 10:10:00-03', 'app'
+from workout_templates where slug = 'inferiores_b';
+select string_agg(label || '=' || status, ' | ' order by label) from (
+  select 'a_dom_forca' as label, coalesce(session_status, 'pendente') as status
+    from plan_with_sessions('2026-11-01','2026-11-01') where start_time = '10:00'
+  union all
+  select 'b_dom_muay', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-01','2026-11-01') where start_time = '19:00'
+  union all
+  select 'c_dois_cedo', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-08','2026-11-08') where start_time = '08:00'
+  union all
+  select 'd_dois_tarde', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-08','2026-11-08') where start_time = '18:00'
+  union all
+  select 'e_ficha', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-15','2026-11-15') where start_time = '10:00'
+  union all
+  select 'f_sexta', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-10-30','2026-10-30') where start_time = '06:00'
+  union all
+  select 'g_ter_forca', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-03','2026-11-03') where modality = 'musculacao'
+  union all
+  select 'h_falta', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-22','2026-11-22') where start_time = '10:00'
+  union all
+  select 'i_parcial', coalesce(session_status, 'pendente')
+    from plan_with_sessions('2026-11-29','2026-11-29') where start_time = '10:00'
+) t"
+expect_eq "status do dia ignora horário: feito/parcial/faltou sem slot" postgres - \
+  "$DAY_STATUS_SQL" \
+  "a_dom_forca=feito | b_dom_muay=pendente | c_dois_cedo=pendente | d_dois_tarde=feito | e_ficha=feito | f_sexta=feito | g_ter_forca=pendente | h_falta=faltou | i_parcial=parcial"
+
 expect_eq "goals: peso_ref 94 → proteína 188–207 g" postgres - "select peso_ref_kg::int || ' ' || protein_g_min || '-' || protein_g_max from goals" "94 188-207"
 expect_eq "body_metrics 27/10: 94 kg (bot)" postgres - "select peso_kg::int || ' ' || source from body_metrics where date = '2026-10-27'" "94 bot"
 
@@ -84,6 +151,8 @@ out="$("$ROOT/scripts/set_owner.sh" "$OWNER" 2>&1)" || true; [[ "$out" == ok ]] 
 
 echo "== dados sintéticos (dev)"
 psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/dev_synthetic.sql" >/dev/null && ok "dev_synthetic.sql aplicado" || fail "dev_synthetic.sql"
+expect_eq "sessão sintética segue no próprio horário" bot - \
+  "select count(*) from sessions s where s.note = 'synthetic' and not exists (select 1 from plan_with_sessions(s.date, s.date) p where p.session_id = s.id and p.slot_id is not distinct from s.slot_id and p.override_id is not distinct from s.override_id)" 0
 
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
@@ -219,6 +288,9 @@ if [[ -x "$ROOT/web/node_modules/.bin/jiti" ]]; then
   if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-pr.ts "$BASE/e1rm_grid.json" 2>&1)"; then
     ok "PR no app: $(grep -c '  ok' <<<"$out") casos (empates sem selo, Epley igual ao do banco)"
   else fail "PR no app (web/scripts/test-pr.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -5)"; fi
+  if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-plan-link.ts 2>&1)"; then
+    ok "vínculo sessão×plano: $(grep -c '  ok' <<<"$out") casos"
+  else fail "vínculo sessão×plano (web/scripts/test-plan-link.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
 else fail "PR no app" "web/node_modules ausente (rode npm install em web/)"; fi
 expect_ok "média 7d por janela de data"     bot - \
   "select 1/(count(*) = 0)::int from v_weight_trend t where t.avg_7d <> round((select avg(b.peso_kg) from body_metrics b where b.peso_kg is not null and b.date between t.date - 6 and t.date), 2)"
