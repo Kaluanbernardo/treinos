@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { addDays, todaySP } from './format'
+import { pickPlanLink, type SessionLinkHint } from './planLink'
 import type {
   BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MealPhoto, MonthlySummary, MuscleVolumeWeek,
   NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, Recomposition,
@@ -169,15 +170,35 @@ export interface StartSessionInput {
   override_id?: string | null
 }
 
+/** Slot/override do plano do dia quando a sessão ainda não tem horário. Falha de leitura não impede o treino. */
+async function loosePlanLink(session: SessionLinkHint & { date: string }) {
+  try {
+    const plan = await rows<PlanItem>(db().rpc('plan_with_sessions', { p_from: session.date, p_to: session.date }))
+    const item = pickPlanLink(plan, session)
+    if (!item || (!item.slot_id && !item.override_id)) return null
+    return { slot_id: item.slot_id, override_id: item.override_id }
+  } catch {
+    return null
+  }
+}
+
 export function useStartSession() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: StartSessionInput) => {
       const id = crypto.randomUUID()
+      let slot_id = input.slot_id ?? null
+      let override_id = input.override_id ?? null
+      // ficha aberta sem o horário do plano: liga se houver um único item compatível hoje
+      if (!slot_id && !override_id) {
+        const link = await loosePlanLink({
+          date: todaySP(), modality: input.modality, template_id: input.template_id, started_at: new Date().toISOString(),
+        })
+        if (link) ({ slot_id, override_id } = link)
+      }
       const { error } = await db().from('sessions').insert({
         id, date: todaySP(), status: 'em_andamento', started_at: new Date().toISOString(), source: 'app',
-        template_id: input.template_id, modality: input.modality,
-        slot_id: input.slot_id ?? null, override_id: input.override_id ?? null,
+        template_id: input.template_id, modality: input.modality, slot_id, override_id,
       })
       if (error) throw new Error(error.message)
       return id
@@ -252,6 +273,7 @@ export function useFinishSession() {
       const { error } = await db().from('sessions').update(patch).eq('id', v.id)
       if (error) throw new Error(error.message)
       if (v.kcal != null && v.date) await saveSessionKcal(v.id, v.date, v.kcal, 'treino salvo, mas as kcal não')
+      await linkFinishedSession(v.id)
       return patch
     },
     onSuccess: (patch, v) => {
@@ -267,6 +289,25 @@ export function useFinishSession() {
       qc.invalidateQueries({ queryKey: ['session_kcal', v.id] })
     },
   })
+}
+
+/**
+ * Sessão fechada sem horário passa a apontar para o item do plano do dia (ficha, ou a única
+ * atividade da modalidade). O status na home não depende desse vínculo; ele só evita divergir de novo.
+ */
+async function linkFinishedSession(id: string) {
+  try {
+    const row = await one<{ date: string; modality: PlanItem['modality']; template_id: string | null; slot_id: string | null; override_id: string | null; started_at: string | null }>(
+      db().from('sessions').select('date, modality, template_id, slot_id, override_id, started_at').eq('id', id).limit(1),
+    )
+    if (!row || row.slot_id || row.override_id) return
+    const link = await loosePlanLink({ id, date: row.date, modality: row.modality, template_id: row.template_id, started_at: row.started_at })
+    if (!link) return
+    const { error } = await db().from('sessions').update(link).eq('id', id).is('slot_id', null).is('override_id', null)
+    if (error) throw new Error(error.message)
+  } catch {
+    // o treino já foi salvo; a home lê a sessão do dia mesmo sem slot
+  }
 }
 
 /** Grava as kcal do relógio da sessão (uma linha por session_id em exercise_kcal). */
