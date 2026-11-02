@@ -69,7 +69,7 @@ Check with `gh run list --limit 3` / `gh run watch <id>`.
 All through `scripts/fit` (runs each statement as `set local role bot` over the Management API; one statement
 per call; refuses role/transaction escapes). `scripts/fit --help` lists every command. Main ones:
 `today`, `week`, `session` (fiz/faltei), `log-set`, `carga`, `move` / `skip` / `add` (schedule overrides),
-`body` (weight + measurements), `photo` (progress photos → private bucket), `food` (TACO search), `meal`,
+`body` (weight + measurements), `photo` (progress photos → private bucket), `food` (TBCA search, TACO fallback), `meal`,
 `creatine`, `kcal` / `kcal-day` / `perfil` (calorias, see `docs/calorias.md`), `note`, `notes`, `evo`, `summary`, `videos`, `sql "<select>"`. Autonomy rules and chat rituals are in
 `docs/assistente.md`. Meaningful changes always get a `bot_notes` row (shown on the app's Notas screen).
 

@@ -11,7 +11,7 @@ LEITURA
   fit evo                                     recomposição + tendência de peso + PRs recentes ("como estou indo?")
   fit summary [week|month] [--n 2]            resumos (v_weekly_summary / v_monthly_summary)
   fit day [data]                              refeições do dia + totais vs metas
-  fit food <busca> [--limit 8]                busca TACO/custom (sem acento, por similaridade)
+  fit food <busca> [--limit 8]                busca custom > TBCA > TACO (sem acento, por similaridade; coluna fonte)
   fit notes [--limit 10]                      últimas notas do assistente
   fit sessions [--limit 10]                   últimas sessões (v_sessions)
   fit videos                                  confere os links de vídeo pelo oEmbed (checagem mensal)
@@ -41,7 +41,7 @@ CORPO
 
 NUTRIÇÃO
   fit meal <refeicao> <item> [<item> ...] [--date d] [--estimated] [--note t]
-        item = "<codigo|nome>=<qtd>"  qtd: 150g | 2 "colher de sopa" (ex.: "taco:3=150g", "taco:410=1 filé")
+        item = "<codigo|nome>=<qtd>"  qtd: 150g | 2 "colher de sopa" (ex.: "tbca:BRC0001C=150g", "taco:3=150g")
         item livre: "desc=Whey 1 scoop;g=30;kcal=120;p=24;c=3;f=1.5"
   fit meal-del <id>                                     apaga um item de refeição
   fit meal-photo <arquivo> <refeicao> [--date d] [--note t]
@@ -49,6 +49,8 @@ NUTRIÇÃO
   fit food-add <slug> "<nome>" <kcal> <prot> <carb> <gord> [--fiber x] [--portion "1 un=350"]
         alimento custom por 100 g (código custom:<slug>)
   fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
+  fit tbca "<termo ou código>" [--all] [--limit 10]     busca no site da TBCA, baixa o detalhe e cadastra em foods (fonte TBCA)
+        um resultado (ou código exato): cadastra. Vários: lista; escolha com fit tbca <código> ou cadastre os listados com --all
   fit creatine [sim|nao] [--g 5] [--date d]             check de creatina
   fit water <ml> [--date d]                             água do dia
   fit steps <n> [--date d]                              passos do dia (só exibição; não mudam o gasto)
@@ -278,7 +280,7 @@ def cmd_food(a):
     if not pos:
         sys.exit("uso: fit food <busca>")
     q = " ".join(pos)
-    table(bot(f"select code, name, kcal, protein_g as p, carb_g as c, fat_g as g, portions from food_search({lit(q)}, {int(o.get('limit', 8))})"))
+    table(bot(f"select code, fonte, name, kcal, protein_g as p, carb_g as c, fat_g as g, portions from food_search({lit(q)}, {int(o.get('limit', 8))})"))
 
 
 def cmd_notes(a):
@@ -601,7 +603,7 @@ def cmd_meal_photo(a):
 
 # ---------------------------------------------------------------- nutrição
 def resolve_food(ref):
-    if ref.startswith(("taco:", "custom:")):
+    if ref.startswith(("taco:", "tbca:", "custom:")):
         r = bot(f"select id, code, name, kcal, protein_g, carb_g, fat_g from foods where code = {lit(ref)}")
         if not r:
             sys.exit(f"erro: alimento {ref} não existe")
@@ -695,14 +697,141 @@ def cmd_food_add(a):
         sys.exit('uso: fit food-add <slug> "<nome>" <kcal> <prot> <carb> <gord> [--fiber x] [--portion "1 un=350"]')
     slug, name = pos[0], pos[1]
     k, p, c, g = (pnum(x) for x in pos[2:6])
-    out = bot(f"insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, source) values ("
-              f"{lit('custom:' + slug)}, {lit(name)}, 'Custom', true, {k}, {p}, {c}, {g}, {lit(o.get('fiber'))}::numeric, 'bot') "
+    out = bot(f"insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, fonte, source) values ("
+              f"{lit('custom:' + slug)}, {lit(name)}, 'Custom', true, {k}, {p}, {c}, {g}, {lit(o.get('fiber'))}::numeric, 'custom', 'bot') "
               f"on conflict (code) do update set name = excluded.name, kcal = excluded.kcal, protein_g = excluded.protein_g, "
               f"carb_g = excluded.carb_g, fat_g = excluded.fat_g, fiber_g = excluded.fiber_g, source = 'bot' returning code, name")
     show(out)
     if "portion" in o:
         label, grams = o["portion"].rsplit("=", 1)
         cmd_portion([f"custom:{slug}", label.strip(), grams.strip()])
+
+
+# ---------------------------------------------------------------- TBCA sob demanda
+TBCA_BASE = "https://www.tbca.net.br/base-dados/"
+TBCA_BLOCK = ("erro: a TBCA pediu verificação de bot (403 / reCAPTCHA) e o fit não contorna isso. Tente mais tarde; "
+              "se continuar, abra https://www.tbca.net.br no navegador e use fit food-add com os valores da página.")
+
+
+def tbca_get(path, data=None):
+    req = urllib.request.Request(TBCA_BASE + path, data=urllib.parse.urlencode(data).encode() if data else None,
+                                 headers={"User-Agent": "fit-cli (app pessoal de nutricao; consulta sob demanda)"})
+    try:
+        with urllib.request.urlopen(req, timeout=40) as r:
+            page = r.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        sys.exit(TBCA_BLOCK if e.code == 403 else f"erro: TBCA respondeu {e.code}")
+    except (urllib.error.URLError, TimeoutError) as e:
+        sys.exit(f"erro: não consegui acessar a TBCA ({e})")
+    if "Bot Verification" in page:
+        sys.exit(TBCA_BLOCK)
+    return page
+
+
+def tbca_clean(s):
+    import html
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", s))).strip()
+
+
+def tbca_num(s):
+    s = s.strip().lower()
+    if s == "tr":
+        return 0.0
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def tbca_parse_list(page):
+    import html
+    out = []
+    for r in re.findall(r"<tr>(<td>.*?)</tr>", page, flags=re.S):
+        tds = re.findall(r"<td>(.*?)</td>", r, flags=re.S)
+        href = re.search(r"href='(int_composicao_alimentos\.php\?[^']*)'", r)
+        if len(tds) >= 4 and href:
+            out.append({"code": tbca_clean(tds[0]), "name": tbca_clean(tds[1]), "group": tbca_clean(tds[3]),
+                        "brand": tbca_clean(tds[4]) if len(tds) > 4 else "", "href": html.unescape(href.group(1))})
+    return out
+
+
+def tbca_parse_detail(page):
+    """Valores por 100 g + medidas caseiras [(rótulo, gramas)]; None se a página não trouxer kcal/proteína/gordura."""
+    header, nut = [], {}
+    for r in re.findall(r"<tr.*?</tr>", page, flags=re.S):
+        cells = [tbca_clean(c) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", r, flags=re.S)]
+        if cells and cells[0] == "Componente":
+            header = cells
+        elif len(cells) >= 3:
+            nut[f"{cells[0]}|{cells[1]}"] = cells[2:]
+    val = lambda k: tbca_num(nut[k][0]) if k in nut and nut[k] else None
+    food = {"kcal": val("Energia|kcal"), "p": val("Proteína|g"), "c": val("Carboidrato total|g"),
+            "f": val("Lipídios|g"), "fib": val("Fibra alimentar|g")}
+    if food["kcal"] is None or food["p"] is None or food["f"] is None:
+        return None
+    # medida em mL não tem gramas na página: usa a razão medida/100 g do componente de maior valor
+    best = max((v for v in nut.values() if tbca_num(v[0])), key=lambda v: tbca_num(v[0]), default=None)
+    portions, seen = [], set()
+    for i, lab in enumerate(header[3:]):
+        m = re.search(r"\(([\d.,]+)\s*(g|ml)\)\s*$", lab, flags=re.I)
+        label = re.sub(r"\s*\([^)]*\)\s*$", "", lab).strip()
+        if m and m.group(2).lower() == "g":
+            grams = tbca_num(m.group(1))
+        else:
+            v = tbca_num(best[i + 1]) if best and i + 1 < len(best) else None
+            grams = round(v / tbca_num(best[0]) * 100, 1) if v else None
+            if m and grams:
+                label = f"{label} ({m.group(1)} mL)"
+        if grams and grams > 0 and label.lower() not in seen:
+            seen.add(label.lower())
+            portions.append((label, round(grams, 1)))
+    food["portions"] = portions
+    return food
+
+
+def tbca_save(item):
+    food = tbca_parse_detail(tbca_get(item["href"]))
+    if not food:
+        print(f"{item['code']}: a página da TBCA não traz kcal/proteína/gordura; nada cadastrado")
+        return False
+    code = "tbca:" + item["code"]
+    name = re.sub(r",\s*Brasil(?=\s*(\(|$))", "", item["name"], flags=re.I).strip()
+    if item["brand"]:
+        name += f" ({item['brand']})"
+    n = lambda v: "null" if v is None else repr(v)
+    out = bot(f"insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, fonte, source) values ("
+              f"{lit(code)}, {lit(name)}, {lit(item['group'])}, false, {n(food['kcal'])}, {n(food['p'])}, {n(food['c'])}, {n(food['f'])}, {n(food['fib'])}, 'TBCA', 'bot') "
+              f"on conflict (code) do update set name = excluded.name, category = excluded.category, kcal = excluded.kcal, protein_g = excluded.protein_g, "
+              f"carb_g = excluded.carb_g, fat_g = excluded.fat_g, fiber_g = excluded.fiber_g, fonte = 'TBCA', source = 'bot' "
+              f"returning code, fonte, name, kcal, protein_g as p, carb_g as c, fat_g as g")
+    if food["portions"]:
+        vals = ", ".join(f"({lit(l)}, {g}::numeric)" for l, g in food["portions"])
+        bot(f"insert into food_portions (food_id, label, grams, source) select f.id, v.label, v.grams, 'bot' "
+            f"from (values {vals}) as v(label, grams) join foods f on f.code = {lit(code)} on conflict (food_id, label) do nothing")
+    table(out)
+    return True
+
+
+def cmd_tbca(a):
+    import time
+    pos, o = opts(a, flags=("limit",), bools=("all",))
+    if not pos:
+        sys.exit('uso: fit tbca "<termo ou código>" [--all] [--limit 10]')
+    term, limit = " ".join(pos), max(1, int(o.get("limit", 10)))
+    rows = tbca_parse_list(tbca_get("composicao_alimentos.php", {"guarda": "tomo1", "produto": term, "cmb_grupo": "", "cmb_tipo_alimento": ""}))
+    rows = [r for r in rows if r["code"].lower() == term.lower()] or rows
+    if not rows:
+        sys.exit(f"nada encontrado na TBCA para '{term}'")
+    if len(rows) > 1 and not o.get("all"):
+        table(rows[:limit], ["code", "name", "brand"])
+        print(f"{len(rows)} resultados na página, nada cadastrado. Escolha: fit tbca <código> (ou --all para cadastrar os {min(limit, len(rows))} primeiros)")
+        return
+    for i, item in enumerate(rows[:limit]):
+        if i:
+            time.sleep(1.5)   # uma página por vez, sem pressa: o site bloqueia volume alto
+        tbca_save(item)
 
 
 def cmd_portion(a):
@@ -871,7 +1000,7 @@ COMMANDS = {
     "today": cmd_today, "week": cmd_week, "evo": cmd_evo, "summary": cmd_summary, "day": cmd_day, "food": cmd_food,
     "notes": cmd_notes, "sessions": cmd_sessions, "session": cmd_session, "log-set": cmd_log_set, "carga": cmd_carga, "target": cmd_target,
     "move": cmd_move, "skip": cmd_skip, "add": cmd_add, "body": cmd_body, "photo": cmd_photo, "meal": cmd_meal,
-    "meal-del": cmd_meal_del, "meal-photo": cmd_meal_photo, "food-add": cmd_food_add, "portion": cmd_portion, "creatine": cmd_creatine,
+    "meal-del": cmd_meal_del, "meal-photo": cmd_meal_photo, "food-add": cmd_food_add, "portion": cmd_portion, "tbca": cmd_tbca, "creatine": cmd_creatine,
     "water": cmd_water, "steps": cmd_steps, "note": cmd_note, "videos": cmd_videos,
     "kcal": cmd_kcal, "kcal-del": cmd_kcal_del, "kcal-day": cmd_kcal_day, "perfil": cmd_perfil,
 }

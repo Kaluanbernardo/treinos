@@ -26,7 +26,7 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 | "move o treino de amanhã pra 7h" | `fit move amanha 06:00 --to amanha 07:00 --motivo "..."` |
 | "82,4" (de manhã) | `fit body 82.4` |
 | "cintura 88, braço 37" | `fit body --cintura 88 --braco 37` |
-| foto/texto de refeição | `fit food <busca>` para achar códigos → `fit meal <refeição> "taco:3=150g" ...` (`--estimated` se veio de foto) |
+| foto/texto de refeição | `fit food <busca>` para achar códigos (prefira `tbca:`; TACO só como reserva; coluna `fonte`; a TBCA importada é parcial: faltou, tente `fit tbca "<termo>"`) → `fit meal <refeição> "tbca:BRC0018A=150g" ...` (`--estimated` se veio de foto) |
 | "tomei creatina" | `fit creatine sim --g 5` |
 | "8.432 passos ontem" / print do relógio | `fit steps 8432 --date ontem` (só exibição; não muda o gasto) |
 | fotos de progresso | `fit photo <arquivo> --pose frente` (remove EXIF, redimensiona, sobe no bucket privado) |

@@ -257,8 +257,11 @@ expect_ok   "bot: DELETE meal_photos"      bot - "delete from meal_photos where 
 if out="$(q bot - "insert into meal_photos (meal, path) values ('  ', 'x.jpg')")"; then fail "meal_photos: refeição vazia deveria falhar" "$out"
 elif grep -q meal_photos_meal_check <<<"$out"; then ok "meal_photos: refeição vazia recusada (check)"; else fail "meal_photos: refeição vazia" "$out"; fi
 expect_eq "TACO: 597 alimentos"         bot - "select count(*) from foods where code like 'taco:%'" 597
-expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 5) where code = 'taco:561'" 1
-expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 10) where code = 'taco:488'" "1 unidade = 50 g"
+expect_eq "food_search sem acento acha feijão carioca" bot - "select count(*) from food_search('feijao carioca cozido', 50) where code = 'taco:561'" 1
+expect_eq "food_search: medidas caseiras" bot - "select portions from food_search('ovo cozido', 50) where code = 'taco:488'" "1 unidade = 50 g"
+expect_eq "TACO marcada como fonte TACO"   bot - "select count(*) from foods where code like 'taco:%' and fonte = 'TACO'" 597
+TBCA_TEST="insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, fonte, source) values ('tbca:TESTE', 'Feijão carioca cozido teste', 'Leguminosas e derivados', false, 71, 4.8, 15.3, 0.5, 7, 'TBCA', 'bot') on conflict (code) do nothing"
+expect_eq "food_search prefere TBCA"        bot - "$TBCA_TEST; select fonte from food_search('feijao carioca cozido teste', 1)" "TBCA"
 expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
 expect_ok "Epley em v_e1rm confere"         bot - "select 1/(count(*) = 0)::int from v_e1rm where e1rm <> round(kg * (1 + reps / 30.0), 2) or reps > 12"
