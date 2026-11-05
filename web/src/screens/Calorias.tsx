@@ -8,7 +8,7 @@ import { Badge, Button, Card, CardHead, Collecting, ErrorState, IconButton, Segm
 import { Big } from '../components/viz'
 import { BalanceBars } from '../components/charts'
 import { StepsStat } from '../components/Steps'
-import { type KcalTargets, idealKcal, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
+import { type KcalTargets, idealKcal, pctOf, useKcalTargets } from '../lib/kcal'
 
 /** Gasto (basal + rotina + exercício) × comida. Regra única em v_energy_daily / docs/calorias.md. */
 
@@ -21,6 +21,8 @@ const C = {
 const KCAL_PER_KG_FAT = 7700
 
 const signedInt = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${intFmt(Math.abs(v))}`
+/** Saldo abaixo disto em dia fechado vira "déficit alto". Mesmo limite de antes (2 × o déficit de 300). */
+const HIGH_DEFICIT_KCAL = -600
 
 function missingFromProfile(p: Profile | null | undefined) {
   if (!p) return ['altura', 'data de nascimento', 'sexo']
@@ -83,10 +85,10 @@ function DayCard({ day, isToday, missing, steps, k }: {
   const out = day?.out_kcal ?? null
   const bal = day?.balance_kcal ?? null
   const target = day?.target_balance_kcal ?? null
-  const ideal = idealKcal(day, null)   // gasto − déficit; só quando há basal
+  const ideal = idealKcal(day, null)   // gasto do dia; só quando há basal
   const idealPct = day?.food_logged ? pctOf(food, ideal) : null
   // dia em andamento: a comida ainda não fechou, então não acusa "déficit alto"
-  const high = !isToday && bal != null && target != null && bal < target * 2
+  const high = !isToday && bal != null && bal < HIGH_DEFICIT_KCAL
   const tone = bal == null ? null : bal > 0 || high ? 'warn' : 'ok'
   const word = bal == null ? '' : bal > 0 ? 'superávit' : high ? 'déficit alto' : bal < 0 ? 'déficit' : 'empate'
   const scale = Math.max(food, out ?? ex, 1)
@@ -122,9 +124,9 @@ function DayCard({ day, isToday, missing, steps, k }: {
           segs={[{ v: bmr ?? 0, c: C.bmr }, { v: life, c: C.life }, { v: ex, c: C.ex, striped: day?.is_estimate }]}
           aria={bmr == null ? `Saiu: basal desconhecido, exercício ${intFmt(ex)} kcal` : `Saiu: ${intFmt(out)} kcal (basal ${intFmt(bmr)}, rotina ${intFmt(life)}, exercício ${intFmt(ex)})`} />
       </div>
-      {k?.dynamic ? <TodayTargets k={k} food={food} /> : ideal != null && target != null && (
+      {k?.dynamic ? <TodayTargets k={k} food={food} /> : ideal != null && (
         <p className="mt-3 flex items-baseline justify-between gap-3 text-[15px] tabular-nums text-muted">
-          <span>Ideal {isToday ? 'hoje' : 'do dia'} <span className="text-[13px]">(gasto {signedInt(target)})</span></span>
+          <span>Ideal {isToday ? 'hoje' : 'do dia'} <span className="text-[13px]">(gasto do dia)</span></span>
           <span><b className="text-lg font-bold text-fg">{intFmt(ideal)}</b> kcal{idealPct != null && <> · {idealPct}% comido</>}</span>
         </p>
       )}
@@ -149,7 +151,7 @@ function DayCard({ day, isToday, missing, steps, k }: {
   )
 }
 
-/** Hoje: metas com / sem o treino que falta (já com o ajuste dos 7 dias). Conta em lib/kcal.ts. */
+/** Hoje: metas com / sem o treino que falta. Conta em lib/kcal.ts. */
 function TodayTargets({ k, food }: { k: KcalTargets; food: number }) {
   const rows = k.hasPlan
     ? [{ label: 'Com treino', v: k.withWorkout, sub: `+${intFmt(k.plannedKcal)} do treino que falta` }, { label: 'Sem treino', v: k.noWorkout, sub: 'só o já registrado' }]
@@ -167,10 +169,6 @@ function TodayTargets({ k, food }: { k: KcalTargets; food: number }) {
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-[13px] tabular-nums text-muted">
-        {k.adjustDays ? `Já inclui o ajuste 7d de ${signedKcal(k.adjust)} kcal (desvio da meta em ${k.adjustDays} ${k.adjustDays === 1 ? 'dia' : 'dias'} ÷ 7, teto ±300).`
-          : 'Ajuste 7d: coletando dados (precisa de dias fechados com refeições e basal).'}
-      </p>
     </div>
   )
 }
@@ -243,7 +241,8 @@ function BalanceCard({ rows, period, setPeriod, selected, onPick, hasBmr }: {
   const withBal = days.filter((d) => d.row?.balance_kcal != null)
   const sum = withBal.reduce((s, d) => s + d.row!.balance_kcal!, 0)
   const avg = withBal.length ? sum / withBal.length : null
-  const target = rows.at(-1)?.target_balance_kcal ?? null
+  // meta 0 coincide com a linha do zero: sem tracejado por cima
+  const target = rows.at(-1)?.target_balance_kcal || null
   const need = 3
 
   return (

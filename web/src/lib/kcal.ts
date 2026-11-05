@@ -4,17 +4,16 @@ import type { EnergyDay, Modality, PlanItem } from './types'
 
 /** Regras em docs/calorias.md ("Meta de kcal de hoje"). Contas puras aqui; o hook só junta as queries. */
 
-/** O ideal do dia vem do gasto real (basal + rotina + exercício) mais a meta de saldo (−déficit). */
-export const hasDynamicIdeal = (row: EnergyDay | undefined | null) =>
-  row?.out_kcal != null && row.target_balance_kcal != null
+/** O ideal do dia é o gasto real (basal + rotina + exercício), que só existe com basal. */
+export const hasDynamicIdeal = (row: EnergyDay | undefined | null) => row?.out_kcal != null
 
 /**
  * Kcal ideal de um dia já vivido (docs/calorias.md):
- *   out_kcal + target_balance_kcal  (gasto − déficit), quando a view tem os dois
+ *   out_kcal (gasto do dia), quando a view tem
  *   senão `fallback` (goals.kcal_target fixo), senão null.
  */
 export function idealKcal(row: EnergyDay | undefined | null, fallback: number | null): number | null {
-  if (hasDynamicIdeal(row)) return Math.round(Number(row!.out_kcal) + Number(row!.target_balance_kcal))
+  if (hasDynamicIdeal(row)) return Math.round(Number(row!.out_kcal))
   return fallback ?? null
 }
 
@@ -44,43 +43,23 @@ export function meanSessionKcal(rows: EnergyDay[], today: string) {
   return days.length ? Math.round(days.reduce((s, r) => s + Number(r.exercise_kcal), 0) / days.length) : 0
 }
 
-// ---------------------------------------------------------------- ajuste dos últimos 7 dias
-export const ADJUST_CAP = 300
-
-/**
- * Desvio da meta nos 7 dias fechados antes de hoje (só dias com comida e saldo):
- *   Σ (balance_kcal − target_balance_kcal), espalhado nos próximos 7 dias com sinal trocado, teto ±300.
- * Comeu 700 acima da meta na semana → −100/dia.
- */
-export function carryOverAdjust(rows: EnergyDay[], today: string) {
-  const from = addDays(today, -7)
-  const days = rows.filter((r) => r.date >= from && r.date < today && r.food_logged && r.balance_kcal != null && r.target_balance_kcal != null)
-  const deviation = days.reduce((s, r) => s + Number(r.balance_kcal) - Number(r.target_balance_kcal), 0)
-  const adjust = Math.round(Math.max(-ADJUST_CAP, Math.min(ADJUST_CAP, -deviation / 7)))
-  return { adjust: adjust || 0, deviation: Math.round(deviation), days: days.length }
-}
-
 // ---------------------------------------------------------------- metas de hoje
 export interface KcalTargets {
   /** Meta se fizer o treino que falta hoje (= noWorkout sem plano pendente). */
   withWorkout: number | null
   /** Meta só com o exercício já registrado hoje. */
   noWorkout: number | null
-  /** Ajuste dos 7 dias anteriores (kcal/dia, ±300). 0 sem basal. */
-  adjust: number
   /** Kcal estimadas do treino que ainda falta hoje. */
   plannedKcal: number
   /** Há treino planejado e ainda não registrado hoje. */
   hasPlan: boolean
   /** true = metas a partir do gasto (basal); false = meta fixa goals.kcal_target. */
   dynamic: boolean
-  /** Dias usados no ajuste (0–7). */
-  adjustDays: number
 }
 
 /**
- * base = bmr + rotina; noWorkout = base + exercício registrado − déficit + ajuste; withWorkout = noWorkout + planejado.
- * Sem basal cai em goals.kcal_target, que já é "gasto − déficit": não desconta o déficit de novo nem soma treino.
+ * noWorkout = bmr + rotina + exercício registrado; withWorkout = noWorkout + planejado.
+ * Sem basal cai em goals.kcal_target, meta fixa: não soma treino.
  */
 export function kcalTargets({ rows, plan, today, fallback }: {
   rows: EnergyDay[]; plan: PlanItem[]; today: string; fallback: number | null
@@ -92,14 +71,11 @@ export function kcalTargets({ rows, plan, today, fallback }: {
   const plannedKcal = pending.reduce((s, i) => s + (weight != null ? estimateSessionKcal(i, weight) : perSession), 0)
   const hasPlan = pending.length > 0
 
-  if (row?.bmr_kcal == null || row.daily_life_kcal == null || row.target_balance_kcal == null) {
-    return { withWorkout: fallback, noWorkout: fallback, adjust: 0, plannedKcal, hasPlan, dynamic: false, adjustDays: 0 }
+  if (row?.bmr_kcal == null || row.daily_life_kcal == null) {
+    return { withWorkout: fallback, noWorkout: fallback, plannedKcal, hasPlan, dynamic: false }
   }
-  const { adjust, days } = carryOverAdjust(rows, today)
-  const base = Number(row.bmr_kcal) + Number(row.daily_life_kcal)
-  const deficit = -Number(row.target_balance_kcal)
-  const noWorkout = Math.round(base + Number(row.exercise_kcal) - deficit + adjust)
-  return { withWorkout: noWorkout + plannedKcal, noWorkout, adjust, plannedKcal, hasPlan, dynamic: true, adjustDays: days }
+  const noWorkout = Math.round(Number(row.bmr_kcal) + Number(row.daily_life_kcal) + Number(row.exercise_kcal))
+  return { withWorkout: noWorkout + plannedKcal, noWorkout, plannedKcal, hasPlan, dynamic: true }
 }
 
 /** Metas de kcal de hoje. Mesma janela de 60 dias da aba Calorias (um cache só). */
@@ -117,6 +93,3 @@ export function useKcalTargets() {
 
 /** Meta principal do dia: com treino se ainda há treino pendente, senão sem treino. */
 export const mainTarget = (k: KcalTargets | null) => (k ? (k.hasPlan ? k.withWorkout : k.noWorkout) : null)
-
-/** "+120" / "−80" / "±0" */
-export const signedKcal = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toLocaleString('pt-BR')}`

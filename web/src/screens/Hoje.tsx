@@ -11,7 +11,7 @@ import { go } from '../lib/router'
 import type { PlanItem, Template } from '../lib/types'
 import { capitalize, dMon, hhmm, intFmt, kgFmt, num, todaySP, wdShort, addDays, weekStart } from '../lib/format'
 import { weekDays } from '../lib/week'
-import { type KcalTargets, mainTarget, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
+import { type KcalTargets, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
@@ -350,7 +350,7 @@ function EvolucaoCard() {
 }
 
 // ---------------------------------------------------------------- Dia: anéis
-/** As duas metas de hoje (com / sem o treino que falta) e o ajuste dos últimos 7 dias. */
+/** As duas metas de hoje (com / sem o treino que falta). */
 function KcalTargetsLine({ k, kcal }: { k: KcalTargets; kcal: number }) {
   return (
     <p className="mt-3 text-[13px] leading-snug tabular-nums text-muted">
@@ -358,7 +358,6 @@ function KcalTargetsLine({ k, kcal }: { k: KcalTargets; kcal: number }) {
         <>Com treino <b className="font-semibold text-fg">{intFmt(k.withWorkout)}</b> kcal ({pctOf(kcal, k.withWorkout)}%)
           {' · '}Sem treino <b className="font-semibold text-fg">{intFmt(k.noWorkout)}</b> kcal ({pctOf(kcal, k.noWorkout)}%)</>
       ) : <>Sem treino pendente hoje</>}
-      {' · '}ajuste 7d {k.adjustDays ? signedKcal(k.adjust) : 'coletando dados'}
     </p>
   )
 }

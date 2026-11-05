@@ -11,7 +11,7 @@ assistente (`fit kcal-day`) leem a mesma view.
   pede os dados em Configurações (`bmr_missing` lista o que falta). Nunca preencher com valores inventados.
 - **Rotina (escolha):** fator modesto de **1,20 sobre o basal** (`profile.activity_factor`, ajustável de
   1,00 a 1,60), mostrado **separado** do basal. Por quê: sem esse fator o gasto ignora a digestão (~10 %) e o
-  movimento mínimo do dia, e um dia comendo no déficit de 300 kcal apareceria como superávit. 1,20 é o
+  movimento mínimo do dia, e um dia comendo abaixo do gasto real apareceria como superávit. 1,20 é o
   multiplicador "sedentário" clássico; os treinos não entram nele (vêm à parte), então não há contagem dupla.
   Se o peso médio de 2–3 semanas contradizer o saldo, o assistente ajusta o fator com `fit perfil --fator`.
 - **Exercício:** kcal **ativas** do relógio (`exercise_kcal`, source `relogio`), não as totais (as totais
@@ -38,7 +38,7 @@ comparar com a tendência de peso antes de mexer no número.
 ## Saldo = comida − gasto
 
 `balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. A meta
-(`target_balance_kcal`) é `−goals.deficit_kcal` (−300).
+(`target_balance_kcal`) é `−goals.deficit_kcal`, hoje **0**: o teto é o próprio gasto, sem déficit fixo.
 
 ## Meta de kcal de hoje (app: Hoje, Nutrição, Calorias)
 
@@ -49,16 +49,15 @@ base        = bmr_kcal + daily_life_kcal                      (linha de hoje)
 planejado   = Σ treinos de hoje ainda sem registro (nem feito/parcial nem faltou):
               (MET − 1) × kg × min/60, mesma regra de v_energy_daily (min da grade/ficha, senão 60, teto 180);
               sem peso: média de exercise_kcal dos dias com treino nos últimos 14 dias, por sessão
-ajuste 7d   = −Σ(balance_kcal − target_balance_kcal) / 7, teto ±300
-              (7 dias fechados antes de hoje, só os com refeição e saldo; o divisor é sempre 7)
-sem treino  = base + exercise_kcal (já registrado hoje) − deficit_kcal + ajuste
+sem treino  = base + exercise_kcal (já registrado hoje)
 com treino  = sem treino + planejado
 ```
 
-O anel usa **com treino** enquanto houver treino pendente, senão **sem treino**. Ex.: comeu 700 kcal acima da
-meta na semana → ajuste −100 kcal/dia. Sem basal cai na meta fixa `goals.kcal_target` (já é gasto − déficit:
-não desconta o déficit de novo, sem ajuste nem treino somado). Dias passados (Nutrição/Calorias) mostram o ideal
-real do dia: `out_kcal + target_balance_kcal`, sem ajuste.
+O anel usa **com treino** enquanto houver treino pendente, senão **sem treino**. Não há déficit fixo nem ajuste
+pelos dias anteriores: o que passou não muda o teto de hoje. Sem basal cai na meta fixa `goals.kcal_target`, sem
+treino somado. Dias passados (Nutrição/Calorias) mostram o ideal real do dia: `out_kcal`.
+
+Na aba Calorias, um dia fechado com saldo abaixo de −600 kcal aparece como "déficit alto".
 
 ## Comandos
 

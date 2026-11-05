@@ -59,7 +59,7 @@ expect_eq "fichas: linhas por ficha"       postgres - "select string_agg(t.slug 
 expect_eq "main lifts"                     postgres - "select count(*) from exercises where main_lift" 11
 expect_eq "8 slots ativos, domingo vazio"  postgres - "select count(*) filter (where active) || '/' || count(*) filter (where weekday = 7) from schedule_slots" "8/0"
 expect_eq "3 exceções da semana"           postgres - "select count(*) from schedule_overrides" 3
-expect_eq "goals"                          postgres - "select deficit_kcal || ' ' || protein_g_per_kg_min || '-' || protein_g_per_kg_max || ' ' || max_loss_pct_week from goals" "300 2.0-2.2 0.50"
+expect_eq "goals"                          postgres - "select deficit_kcal || ' ' || protein_g_per_kg_min || '-' || protein_g_per_kg_max || ' ' || max_loss_pct_week from goals" "0 2.0-2.2 0.50"
 expect_eq "ter 27/10: crossfit (sem jiu-jitsu)" postgres - \
   "select string_agg(to_char(start_time,'HH24:MI') || ' ' || title || ' ' || modality || ' ' || plan_kind, ' | ' order by start_time) from plan_between('2026-10-27','2026-10-27')" \
   "06:00 Crossfit cross substituido"

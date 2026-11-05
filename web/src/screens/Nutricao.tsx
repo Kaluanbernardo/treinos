@@ -6,7 +6,7 @@ import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP }
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
-import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, signedKcal, useKcalTargets } from '../lib/kcal'
+import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
 
 const EMPTY: DailyNutrition = { date: '', kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: false, creatine_g: null, water_ml: null }
 
@@ -17,7 +17,7 @@ export function Nutricao() {
   const targets = useNutritionTargets()
   const logs = useFoodLogs(date)
   const photos = useMealPhotos(date)
-  // hoje: metas com/sem treino (lib/kcal.ts); dias passados: gasto real − déficit. Mesma janela de 60 dias da aba Calorias.
+  // hoje: metas com/sem treino (lib/kcal.ts); dias passados: gasto real. Mesma janela de 60 dias da aba Calorias.
   const energy = useEnergyDaily(60)
   const kt = useKcalTargets()
   const isToday = date === today
@@ -103,7 +103,7 @@ function Macros({ day, t, k, ideal, dynamic }: {
           <p className="mt-0.5 text-[13px] text-muted">
             {!dynamic ? 'meta fixa (sem gasto calculado para o dia)'
               : k ? (k.hasPlan ? 'meta com o treino que falta hoje' : 'meta de hoje (sem treino pendente)')
-                : 'ideal do dia (gasto − déficit)'}
+                : 'ideal do dia (gasto do dia)'}
           </p>
         )}
       </div>
@@ -132,7 +132,7 @@ function Macros({ day, t, k, ideal, dynamic }: {
   )
 }
 
-/** Hoje: as duas metas (com / sem o treino que falta), cada uma com o consumido, e o ajuste dos 7 dias. */
+/** Hoje: as duas metas (com / sem o treino que falta), cada uma com o consumido. */
 function KcalTargetsBlock({ k, kcal }: { k: KcalTargets; kcal: number }) {
   const rows = k.hasPlan
     ? [{ name: 'Com treino', target: k.withWorkout, sub: `+${intFmt(k.plannedKcal)} kcal do treino que falta` },
@@ -154,11 +154,6 @@ function KcalTargetsBlock({ k, kcal }: { k: KcalTargets; kcal: number }) {
           <p className="mt-1 text-[13px] text-muted">{r.sub}</p>
         </div>
       ))}
-      <p className="text-[13px] tabular-nums text-muted">
-        {k.adjustDays
-          ? <>Ajuste 7d <b className="font-semibold text-fg">{signedKcal(k.adjust)}</b> kcal/dia · desvio da meta em {k.adjustDays} {k.adjustDays === 1 ? 'dia' : 'dias'}, dividido por 7 (teto ±300)</>
-          : 'Ajuste 7d: coletando dados (precisa de dias com refeições e basal)'}
-      </p>
     </div>
   )
 }
