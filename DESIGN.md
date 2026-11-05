@@ -334,6 +334,9 @@ Three equal cells (Peso · Cintura · Força) on an inset `bg`/60 panel with a 1
 ### Calorias (in × out)
 Gasto = basal (Mifflin-St Jeor) + rotina (basal × 0,20) + exercício (watch active kcal, or a MET estimate); saldo = comida − gasto. Rule and the NEAT-factor choice: `docs/calorias.md`. Food keeps the `kcal` hue; expenditure is a neutral `fg` ramp (basal 30 %, rotina 15 %, exercício solid; estimated exercise is striped plus an "estimado" badge) so no other metric hue is borrowed. The hero is the day's saldo (44px, signed) with an arrow + word badge (déficit / superávit / déficit alto, never "alto" on the day still in progress) over two bars on one scale (Entrou / Saiu). The period chart is diverging bars from zero in `kcal` with the selected day full and the rest at 45 %, the target as a dashed `ok` line. Without height, birth date or sex the basal, gasto and saldo stay blank and a card sends to Configurações → Perfil (the only data-entry form in the app, by explicit request).
 
+### Saldo da semana e do mês (Nutrição)
+A segmented control (Dia · Semana · Mês) under the Nutrição title swaps the day view for the period view, and the stepper below it names the period and its exact dates. The hero is the summed saldo (44px, signed) with the same arrow + word badge as the Calorias day, then "N de M dias na conta", comida, gasto, média por dia and the kg equivalent. A "Fora da conta" list names what the sum leaves out (hoje em andamento, sem refeição, sem basal, ainda por vir). The daily bars are the Calorias diverging bars, with days not counted left blank; on desktop they take the right column, where the meal feed sits in the day view.
+
 ### PR Seal (signature)
 A lime 6px-radius tag with "PR" in 12px black weight and `bg` text. It stamps in (520ms scale + rotate, eased out) with a double haptic pulse the moment a confirmed set beats a record. Records elsewhere use a lime trophy icon.
 

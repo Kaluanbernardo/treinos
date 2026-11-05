@@ -513,6 +513,14 @@ export const useEnergyDaily = (days = 60) =>
       rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', addDays(todaySP(), -(days - 1))).order('date')),
   })
 
+/** v_energy_daily de um intervalo fechado de datas (semana ou mês, inclusive os anteriores à janela de 60 dias). */
+export const useEnergyRange = (from: string, to: string) =>
+  useQuery({
+    queryKey: ['v_energy_daily', 'range', from, to],
+    queryFn: () =>
+      rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', from).lte('date', to).order('date')),
+  })
+
 /** Passos por dia (daily_checks.steps, via `fit steps`). Só exibição: não entram no gasto. */
 export const useDailySteps = (days = 60) =>
   useQuery({

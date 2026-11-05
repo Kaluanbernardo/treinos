@@ -294,6 +294,9 @@ if [[ -x "$ROOT/web/node_modules/.bin/jiti" ]]; then
   if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-plan-link.ts 2>&1)"; then
     ok "vínculo sessão×plano: $(grep -c '  ok' <<<"$out") casos"
   else fail "vínculo sessão×plano (web/scripts/test-plan-link.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
+  if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-balance.ts 2>&1)"; then
+    ok "saldo da semana e do mês: $(grep -c '  ok' <<<"$out") casos"
+  else fail "saldo da semana e do mês (web/scripts/test-balance.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
 else fail "PR no app" "web/node_modules ausente (rode npm install em web/)"; fi
 expect_ok "média 7d por janela de data"     bot - \
   "select 1/(count(*) = 0)::int from v_weight_trend t where t.avg_7d <> round((select avg(b.peso_kg) from body_metrics b where b.peso_kg is not null and b.date between t.date - 6 and t.date), 2)"

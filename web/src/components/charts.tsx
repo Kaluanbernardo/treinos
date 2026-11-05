@@ -136,7 +136,7 @@ export function Bars({ data, color, unit, height = 150, ariaLabel, digits = 0, b
   )
 }
 
-export interface BalancePoint { date: string; label: string; value: number | null; food?: number | null; out?: number | null }
+export interface BalancePoint { date: string; label: string; value: number | null; food?: number | null; out?: number | null; note?: string }
 
 /**
  * Saldo diário (comida − gasto) em barras divergentes a partir do zero: abaixo = déficit, acima = superávit.
@@ -190,7 +190,7 @@ export function BalanceBars({ data, color, target, selected, height = 180, ariaL
                 return (
                   <TipBox>
                     <p className="text-muted">{dm(row.date)}</p>
-                    {row.value == null ? <p>sem saldo</p> : (
+                    {row.value == null ? <p>{row.note ?? 'sem saldo'}</p> : (
                       <p><b className="tabular-nums">{sgn(row.value)} kcal</b> {row.value < 0 ? 'déficit' : row.value > 0 ? 'superávit' : ''}</p>
                     )}
                     {row.food != null && row.out != null && <p className="tabular-nums text-muted">{num(row.food, 0)} comida · {num(row.out, 0)} gasto</p>}

@@ -3,15 +3,20 @@ import { CalendarCheck, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, D
 import { useDailyNutrition, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useSignedUrls, useToggleCreatine } from '../lib/api'
 import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets } from '../lib/types'
 import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
-import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
+import { Badge, Button, Card, ErrorState, IconButton, Segmented, Skeleton, haptic, toast } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
 import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
+import { PeriodStepper, SaldoPeriodo } from './SaldoPeriodo'
 
 const EMPTY: DailyNutrition = { date: '', kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: false, creatine_g: null, water_ml: null }
 
+type View = 'dia' | 'semana' | 'mes'
+
 export function Nutricao() {
   const [date, setDate] = useState(todaySP())
+  const [view, setView] = useState<View>('dia')
+  const [offset, setOffset] = useState(0)   // semana/mês: 0 = atual, −1 = anterior
   const today = todaySP()
   const daily = useDailyNutrition()
   const targets = useNutritionTargets()
@@ -32,22 +37,32 @@ export function Nutricao() {
     <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:grid-rows-[auto_auto_auto_auto_1fr] lg:items-start lg:gap-x-6 lg:gap-y-4">
       <div className="flex items-center justify-between gap-3 pt-1 lg:col-span-2">
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">Nutrição</h1>
-        {date !== today && (
+        {view === 'dia' && date !== today && (
           <Button onClick={() => setDate(today)} className="flex items-center gap-2"><CalendarCheck size={18} aria-hidden="true" /> Hoje</Button>
+        )}
+        {view !== 'dia' && offset !== 0 && (
+          <Button onClick={() => setOffset(0)} className="flex items-center gap-2"><CalendarCheck size={18} aria-hidden="true" /> {view === 'semana' ? 'Esta semana' : 'Este mês'}</Button>
         )}
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl bg-card p-1 lg:col-start-1" role="group" aria-label="Dia">
-        <IconButton label="Dia anterior" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={24} /></IconButton>
-        <p className="text-center" aria-live="polite">
-          <span className="block font-semibold">{date === today ? 'Hoje' : date === addDays(today, -1) ? 'Ontem' : capitalize(longDay(date).split(',')[0])}</span>
-          <span className="block text-sm text-muted">{capitalize(longDay(date).split(', ')[1] ?? '')}</span>
-        </p>
-        <IconButton label="Próximo dia" onClick={() => setDate(addDays(date, 1))} disabled={date >= today} className="disabled:opacity-30">
-          <ChevronRight size={24} />
-        </IconButton>
+      <div className="flex flex-col gap-3 lg:col-start-1">
+        <Segmented label="Ver nutrição por" value={view} onChange={(v) => { setView(v); setOffset(0) }}
+          options={[{ value: 'dia', label: 'Dia' }, { value: 'semana', label: 'Semana' }, { value: 'mes', label: 'Mês' }]} />
+        {view === 'dia' ? (
+          <div className="flex items-center justify-between rounded-2xl bg-card p-1" role="group" aria-label="Dia">
+            <IconButton label="Dia anterior" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={24} /></IconButton>
+            <p className="text-center" aria-live="polite">
+              <span className="block font-semibold">{date === today ? 'Hoje' : date === addDays(today, -1) ? 'Ontem' : capitalize(longDay(date).split(',')[0])}</span>
+              <span className="block text-sm text-muted">{capitalize(longDay(date).split(', ')[1] ?? '')}</span>
+            </p>
+            <IconButton label="Próximo dia" onClick={() => setDate(addDays(date, 1))} disabled={date >= today} className="disabled:opacity-30">
+              <ChevronRight size={24} />
+            </IconButton>
+          </div>
+        ) : <PeriodStepper kind={view} offset={offset} onOffset={setOffset} />}
       </div>
 
+      {view !== 'dia' ? <SaldoPeriodo kind={view} offset={offset} /> : <>
       <div className="lg:col-start-1">
       {daily.isError || targets.isError ? (
         <ErrorState what="a nutrição" onRetry={() => { daily.refetch(); targets.refetch() }} />
@@ -72,6 +87,7 @@ export function Nutricao() {
       </section>
 
       <div className="lg:col-start-1"><Checks day={day} date={date} t={t ?? null} /></div>
+      </>}
     </div>
   )
 }

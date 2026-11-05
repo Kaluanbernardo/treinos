@@ -9,6 +9,7 @@ import { Big } from '../components/viz'
 import { BalanceBars } from '../components/charts'
 import { StepsStat } from '../components/Steps'
 import { type KcalTargets, idealKcal, pctOf, useKcalTargets } from '../lib/kcal'
+import { HIGH_DEFICIT_KCAL, KCAL_PER_KG_FAT, signedInt } from '../lib/balance'
 
 /** Gasto (basal + rotina + exercício) × comida. Regra única em v_energy_daily / docs/calorias.md. */
 
@@ -18,11 +19,6 @@ const C = {
   life: 'color-mix(in srgb, var(--color-fg) 15%, transparent)',
   ex: 'var(--color-fg)',
 }
-const KCAL_PER_KG_FAT = 7700
-
-const signedInt = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${intFmt(Math.abs(v))}`
-/** Saldo abaixo disto em dia fechado vira "déficit alto". Mesmo limite de antes (2 × o déficit de 300). */
-const HIGH_DEFICIT_KCAL = -600
 
 function missingFromProfile(p: Profile | null | undefined) {
   if (!p) return ['altura', 'data de nascimento', 'sexo']

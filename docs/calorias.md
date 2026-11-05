@@ -40,6 +40,25 @@ comparar com a tendência de peso antes de mexer no número.
 `balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. A meta
 (`target_balance_kcal`) é `−goals.deficit_kcal`, hoje **0**: o teto é o próprio gasto, sem déficit fixo.
 
+## Saldo da semana e do mês (app: Nutrição → Semana / Mês)
+
+Soma de `balance_kcal` no cliente, em `web/src/lib/balance.ts`, sem coluna nova na view:
+
+- **Semana:** segunda a domingo. **Mês:** do dia 1 ao último do calendário. "Hoje" é sempre `America/Sao_Paulo`;
+  as setas voltam para períodos anteriores (leitura direta de `v_energy_daily` por intervalo de datas).
+- **Na conta:** só dia fechado com saldo. Comida, gasto e média por dia usam os mesmos dias, então
+  comida − gasto = saldo.
+- **Fora da conta, e nomeado na tela:**
+  - **hoje:** basal do dia inteiro contra a comida até agora daria um déficit falso; aparece à parte como
+    "até agora" e entra na soma quando o dia fechar;
+  - **dia sem refeição:** o saldo é `NULL`; não vira zero nem déficit do gasto inteiro;
+  - **dia com refeição, sem basal:** idem, com o motivo;
+  - **dia futuro.**
+- "Déficit alto" no período compara a **média por dia** com o mesmo limite do dia (−600 kcal). O equivalente em kg
+  usa 7700 kcal/kg, como a aba Calorias.
+
+A aba Calorias ("Saldo diário") tem outra janela: últimos 7/30 dias corridos, com hoje na média.
+
 ## Meta de kcal de hoje (app: Hoje, Nutrição, Calorias)
 
 Conta no cliente, em `web/src/lib/kcal.ts` (`useKcalTargets()`), a partir de `v_energy_daily` e do plano do dia:
