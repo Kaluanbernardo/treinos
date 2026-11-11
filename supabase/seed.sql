@@ -7,10 +7,11 @@ begin;
 insert into public.goals (singleton, deficit_kcal, protein_g_per_kg_min, protein_g_per_kg_max,
                           creatine_g_min, creatine_g_max, water_ml_per_kg_min, water_ml_per_kg_max,
                           max_loss_pct_week, peso_ref_kg, note)
-values (true, 0, 2.0, 2.2, 3, 5, 35, 40, 0.5, 94,
-        'Teto do dia = basal + rotina + exercício, sem déficit fixo. Regra em docs/calorias.md.')
+values (true, 300, 2.0, 2.2, 3, 5, 35, 40, 0.5, 94,
+        'Meta do dia = saldo −300 kcal, fixa (treine ou não). Pode consumir = basal + rotina + exercício − 300. Regra em docs/calorias.md.')
+-- deficit_kcal (saldo-alvo = −deficit_kcal) só entra no insert: depois é configurável (`fit saldo-alvo`) e o seed
+-- reaplicado não pode zerá-lo
 on conflict (singleton) do update set
-  deficit_kcal = excluded.deficit_kcal,
   protein_g_per_kg_min = excluded.protein_g_per_kg_min,
   protein_g_per_kg_max = excluded.protein_g_per_kg_max,
   creatine_g_min = excluded.creatine_g_min,

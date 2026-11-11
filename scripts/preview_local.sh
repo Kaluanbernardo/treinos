@@ -73,6 +73,16 @@ values (public.today_sp(), 'cafe', 'exemplo/cafe.jpg', 'exemplo/cafe-thumb.jpg',
 insert into public.daily_checks (date, creatine, water_ml, source, note)
   values (public.today_sp(), false, 1500, 'bot', 'synthetic')
   on conflict (date) do update set water_ml = excluded.water_ml;
+-- comida de exemplo variando por dia (o sintético repete 1920 kcal): dias de déficit e de superávit no saldo acumulado
+update public.food_logs f
+   set kcal = round(f.kcal * x.k), protein_g = round(f.protein_g * x.k, 1), carb_g = round(f.carb_g * x.k, 1), fat_g = round(f.fat_g * x.k, 1)
+  from (select d::date as date, 0.95 + ((extract(doy from d)::int * 53) % 61) / 100.0 as k
+          from generate_series(public.today_sp() - 60, public.today_sp() - 1, interval '1 day') d) x
+ where f.date = x.date and f.note = 'synthetic';
+-- um diário marcado incompleto pelo assistente (fica fora do acumulado e das médias)
+insert into public.daily_checks (date, diary_incomplete, source, note)
+  values (public.today_sp() - 5, true, 'bot', 'synthetic')
+  on conflict (date) do update set diary_incomplete = true;
 -- calorias de exemplo: perfil FICTÍCIO (só aqui, nunca no banco real) + kcal do relógio em parte das sessões
 update public.profile set height_cm = 180, birth_date = '1990-01-01', sex = 'M';
 insert into public.exercise_kcal (date, session_id, kcal, source, note)

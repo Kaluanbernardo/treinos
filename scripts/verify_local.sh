@@ -59,7 +59,7 @@ expect_eq "fichas: linhas por ficha"       postgres - "select string_agg(t.slug 
 expect_eq "main lifts"                     postgres - "select count(*) from exercises where main_lift" 11
 expect_eq "8 slots ativos, domingo vazio"  postgres - "select count(*) filter (where active) || '/' || count(*) filter (where weekday = 7) from schedule_slots" "8/0"
 expect_eq "3 exceções da semana"           postgres - "select count(*) from schedule_overrides" 3
-expect_eq "goals"                          postgres - "select deficit_kcal || ' ' || protein_g_per_kg_min || '-' || protein_g_per_kg_max || ' ' || max_loss_pct_week from goals" "0 2.0-2.2 0.50"
+expect_eq "goals (saldo-alvo −300 = deficit_kcal 300)" postgres - "select deficit_kcal || ' ' || protein_g_per_kg_min || '-' || protein_g_per_kg_max || ' ' || max_loss_pct_week from goals" "300 2.0-2.2 0.50"
 expect_eq "ter 27/10: crossfit (sem jiu-jitsu)" postgres - \
   "select string_agg(to_char(start_time,'HH24:MI') || ' ' || title || ' ' || modality || ' ' || plan_kind, ' | ' order by start_time) from plan_between('2026-10-27','2026-10-27')" \
   "06:00 Crossfit cross substituido"
@@ -157,7 +157,7 @@ expect_eq "sessão sintética segue no próprio horário" bot - \
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
        v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets v_muscle_volume_weekly
-       v_energy_daily v_training_weeks v_protein_target)
+       v_energy_daily v_training_weeks v_protein_target v_day_targets)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"
@@ -298,6 +298,57 @@ expect_eq "proteína: abaixo do IMC 30 usa o peso da balança (80 kg → 104/128
 expect_eq "proteína: sem altura, peso da balança" postgres - \
   "update profile set height_cm = null; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; select ref_basis || ' ' || ref_weight_kg || ' ' || min_g || '/' || ideal_g || '/' || cap_g from v_protein_target" \
   "peso 92.5 120/148/204"
+
+# saldo-alvo fixo, permissão do dia, diário incompleto e faixas de carbo/gordura (v_day_targets; docs/calorias.md, docs/macros.md)
+expect_eq "saldo-alvo: −300 em todo dia (goals.deficit_kcal 300)" bot - \
+  "select string_agg(distinct target_balance_kcal::text, ',') from v_day_targets" "-300"
+expect_eq "permissão = basal + rotina + exercício − 300; resta = permissão − comida; vs meta = saldo real + 300" bot - \
+  "$PROFILE_SET; select count(*) filter (where allowance_basis = 'gasto') > 0 and count(*) filter (where allowance_kcal <> bmr_kcal + daily_life_kcal + exercise_kcal - 300 or remaining_kcal <> allowance_kcal - food_kcal or (food_logged and balance_vs_target_kcal <> balance_kcal + 300)) = 0 from v_day_targets" t
+expect_eq "permissão: treino feito aumenta a permissão, a meta fica" bot - \
+  "$PROFILE_SET; select bool_and(t.allowance_kcal - (t.bmr_kcal + t.daily_life_kcal - 300) = t.exercise_kcal and t.target_balance_kcal = -300) from v_day_targets t where t.exercise_kcal > 0" t
+expect_eq "permissão: sem basal cai na meta fixa (goals.kcal_target)" bot - \
+  "select allowance_basis || ' ' || allowance_kcal from v_day_targets where date = today_sp()" "fixa 2200"
+DT_SQL="select fat_floor_g || '/' || fat_min_g || '/' || fat_max_g || ' ' || carb_floor_g || '/' || carb_min_g || '/' || carb_max_g from v_day_targets where date = today_sp()"
+expect_eq "faixas: permissão 2200, proteína 119/147/202 → gordura 37/49/86 g (15/20/35 %) · carbo 130/156/293 g" postgres - \
+  "update profile set height_cm = 175; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; $DT_SQL" \
+  "37/49/86 130/156/293"
+expect_eq "faixas: Kaluan em dia sem treino (gasto 2225 − 300 = 1925) → gordura 32/43/75 · carbo 130/130/238 (mínimo ok vazio)" postgres - \
+  "update profile set height_cm = 175; update goals set kcal_target = 1925; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; $DT_SQL" \
+  "32/43/75 130/130/238"
+expect_eq "faixas: sem permissão (sem basal e sem meta fixa), sem faixa de gordura nem de carbo" postgres - \
+  "update goals set kcal_target = null; select coalesce(fat_min_g::text, '-') || ' ' || coalesce(carb_min_g::text, '-') || ' ' || carb_floor_g from v_day_targets where date = today_sp()" "- - 130"
+MEAL_TODAY="update profile set height_cm = 175; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg;
+  insert into food_logs (date, meal, description, kcal, protein_g, carb_g, fat_g, source) values (today_sp(), 'almoco', 'teste zonas', 1500, 150, 100, 60, 'bot')"
+expect_eq "zonas: proteína 150 ideal · carbo 100 abaixo (< 130) · gordura 60 ideal (49–86); hoje fica fora da conta" postgres - \
+  "$MEAL_TODAY; select protein_zone || ' ' || carb_zone || ' ' || fat_zone || ' ' || day_state from v_day_targets where date = today_sp()" \
+  "ideal abaixo ideal hoje"
+expect_eq "zonas: limites (carbo 130 = mínimo ok, 156 = ideal, 294 = acima; gordura 36,9 abaixo, 37 ok, 86 ideal, 86,1 acima)" postgres - \
+  "$MEAL_TODAY; update food_logs set carb_g = v.c, fat_g = v.f from (values (130, 36.9)) v(c, f) where description = 'teste zonas';
+   select carb_zone || '/' || fat_zone from v_day_targets where date = today_sp();
+   update food_logs set carb_g = 156, fat_g = 37 where description = 'teste zonas'; select carb_zone || '/' || fat_zone from v_day_targets where date = today_sp();
+   update food_logs set carb_g = 294, fat_g = 86 where description = 'teste zonas'; select carb_zone || '/' || fat_zone from v_day_targets where date = today_sp();
+   update food_logs set fat_g = 86.1 where description = 'teste zonas'; select carb_zone || '/' || fat_zone from v_day_targets where date = today_sp()" \
+  "ok/abaixo
+ideal/ok
+acima/ideal
+acima/acima"
+expect_eq "estado do dia: na_conta, sem_refeicao e hoje (sintéticos: 1 dia em 7 sem refeição)" bot - \
+  "$PROFILE_SET; select string_agg(day_state || '=' || n, ' ' order by day_state) from (select day_state, count(*) as n from v_day_targets where date >= today_sp() - 56 group by 1) x" \
+  "hoje=1 na_conta=48 sem_refeicao=8"
+INCOMPLETE="insert into daily_checks (date, diary_incomplete, source) values (today_sp() - 2, true, 'bot') on conflict (date) do update set diary_incomplete = true, source = 'bot'"
+expect_eq "diário incompleto: o dia sai da conta, sem zonas, sem mexer nos outros" bot - \
+  "$PROFILE_SET; $INCOMPLETE; select day_state || ' ' || coalesce(protein_zone, '-') || ' ' || food_logged || ' ' || (select count(*) from v_day_targets where day_state = 'incompleto') from v_day_targets where date = today_sp() - 2" \
+  "incompleto - true 1"
+expect_eq "diário incompleto: padrão false (coluna nova não marca nada)" postgres - \
+  "select count(*) filter (where diary_incomplete) || ' ' || bool_and(not diary_incomplete) from daily_checks" "0 true"
+expect_deny "anon: v_day_targets negado" anon - "select count(*) from v_day_targets"
+expect_deny "anon: daily_checks.diary_incomplete negado" anon - "select diary_incomplete from daily_checks"
+# o seed reaplicado não zera o saldo-alvo configurado (fit saldo-alvo)
+psql "$SUPABASE_DB_URL" -X -q -c "update goals set deficit_kcal = 450" >/dev/null
+psql "$SUPABASE_DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/seed.sql" >/dev/null 2>&1 || true
+expect_eq "seed reaplicado mantém o saldo-alvo configurado" postgres - "select deficit_kcal from goals" 450
+psql "$SUPABASE_DB_URL" -X -q -c "update goals set deficit_kcal = 300" >/dev/null
+
 expect_eq "v_sessions: plan_kind (adicionado = remarcado)" bot - \
   "select count(*) filter (where s.override_id is not null and v.plan_kind is null) from sessions s join v_sessions v using (id)" 0
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
