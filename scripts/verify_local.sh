@@ -157,7 +157,7 @@ expect_eq "sessão sintética segue no próprio horário" bot - \
 echo "== views (como bot e como dono)"
 VIEWS=(v_today v_week v_last_sets v_daily_nutrition v_weight_trend v_e1rm v_e1rm_session v_prs v_pr_bests
        v_recomposition v_streaks v_weekly_summary v_monthly_summary v_sessions v_nutrition_targets v_muscle_volume_weekly
-       v_energy_daily)
+       v_energy_daily v_training_weeks v_protein_target)
 for v in "${VIEWS[@]}"; do
   inv="$(q postgres - "select (coalesce(reloptions::text, '') like '%security_invoker=true%')::int from pg_class where oid = 'public.$v'::regclass")" || true
   [[ "$inv" == 1 ]] || fail "$v security_invoker" "$inv"
@@ -263,6 +263,43 @@ expect_eq "TACO marcada como fonte TACO"   bot - "select count(*) from foods whe
 TBCA_TEST="insert into foods (code, name, category, is_custom, kcal, protein_g, carb_g, fat_g, fiber_g, fonte, source) values ('tbca:TESTE', 'Feijão carioca cozido teste', 'Leguminosas e derivados', false, 71, 4.8, 15.3, 0.5, 7, 'TBCA', 'bot') on conflict (code) do nothing"
 expect_eq "food_search prefere TBCA"        bot - "$TBCA_TEST; select fonte from food_search('feijao carioca cozido teste', 1)" "TBCA"
 expect_eq "v_nutrition_targets: proteína 2,0–2,2 g/kg" bot - "select (protein_min_g between 150 and 220)::int from v_nutrition_targets" 1
+
+# meta semanal (v_training_weeks): contagem = sessões feito+parcial da semana, qualquer modalidade
+expect_ok "v_training_weeks: done = feito+parcial da semana" bot - \
+  "select 1/(count(*) = 0)::int from v_training_weeks w where w.done <> (select count(*) from sessions s where s.status in ('feito', 'parcial') and s.date between w.week_start and w.week_end)"
+expect_eq "v_training_weeks: semanas contínuas até a atual, só a última é a atual" bot - \
+  "select (count(*) = (max(week_start) - min(week_start)) / 7 + 1 and count(*) filter (where is_current) = 1 and bool_and(is_current = (week_start = week_start(today_sp()))))::int from v_training_weeks" 1
+TW_SEQ="insert into sessions (date, modality, status, source) values
+  ('2025-01-06', 'musculacao', 'feito', 'bot'), ('2025-01-07', 'muay_thai', 'feito', 'bot'), ('2025-01-08', 'funcional', 'parcial', 'bot'),
+  ('2025-01-09', 'cross', 'feito', 'bot'), ('2025-01-10', 'muay_thai', 'faltou', 'bot'),
+  ('2025-01-13', 'musculacao', 'feito', 'bot'), ('2025-01-13', 'muay_thai', 'feito', 'bot'), ('2025-01-14', 'musculacao', 'feito', 'bot'),
+  ('2025-01-14', 'cross', 'feito', 'bot'), ('2025-01-15', 'musculacao', 'feito', 'bot'), ('2025-01-15', 'muay_thai', 'feito', 'bot'),
+  ('2025-01-16', 'musculacao', 'feito', 'bot'), ('2025-01-17', 'muay_thai', 'feito', 'bot'), ('2025-01-18', 'funcional', 'feito', 'bot'),
+  ('2025-01-19', 'musculacao', 'feito', 'bot'),
+  ('2025-01-20', 'musculacao', 'feito', 'bot'), ('2025-01-21', 'muay_thai', 'feito', 'bot')"
+expect_eq "meta semanal: 4 na faixa (parcial conta, faltou não), 10 acima, 2 abaixo zera a sequência" bot - \
+  "$TW_SEQ; select string_agg(to_char(week_start, 'DD/MM') || ' ' || done || '/' || goal_min || '-' || goal_max || ' ' || status || ' f' || missed || ' s' || streak_weeks, ' | ' order by week_start) from v_training_weeks where week_start between '2025-01-06' and '2025-01-20'" \
+  "06/01 4/4-9 na_faixa f1 s1 | 13/01 10/4-9 acima f0 s2 | 20/01 2/4-9 abaixo f0 s0"
+expect_eq "meta semanal: por modalidade conta só o feito" bot - \
+  "$TW_SEQ; select by_modality::text from v_training_weeks where week_start = '2025-01-06'" \
+  '{"cross": 1, "funcional": 1, "muay_thai": 1, "musculacao": 1}'
+expect_eq "meta semanal: semana atual abaixo do mínimo não quebra a sequência" bot - \
+  "insert into sessions (date, modality, status, source) select week_start(today_sp()) - 7 + g, 'musculacao', 'feito', 'bot' from generate_series(0, 3) g; update sessions set status = 'faltou' where date >= week_start(today_sp()); select c.done || ' ' || c.status || ' ' || (c.streak_weeks = p.streak_weeks and p.streak_weeks >= 1)::int from v_training_weeks c join v_training_weeks p on p.week_start = c.week_start - 7 where c.is_current" \
+  "0 abaixo 1"
+
+# faixa de proteína (v_protein_target): última pesagem, limitada ao peso do IMC 30 (docs/proteina.md)
+PT_SQL="select ref_basis || ' ' || ref_weight_kg || ' ' || min_g || '/' || ideal_g || '/' || cap_g || ' imc ' || bmi from v_protein_target"
+expect_eq "proteína: 92,5 kg / 175 cm (IMC 30,2) → referência 91,9 kg → 119/147/202 g" postgres - \
+  "update profile set height_cm = 175; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; $PT_SQL" \
+  "teto_imc 91.9 119/147/202 imc 30.2"
+expect_eq "proteína: abaixo do IMC 30 usa o peso da balança (80 kg → 104/128/176 g)" postgres - \
+  "update profile set height_cm = 175; insert into body_metrics (date, peso_kg, source) values (today_sp(), 80, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; $PT_SQL" \
+  "peso 80.0 104/128/176 imc 26.1"
+expect_eq "proteína: sem altura, peso da balança" postgres - \
+  "update profile set height_cm = null; insert into body_metrics (date, peso_kg, source) values (today_sp(), 92.5, 'bot') on conflict (date) do update set peso_kg = excluded.peso_kg; select ref_basis || ' ' || ref_weight_kg || ' ' || min_g || '/' || ideal_g || '/' || cap_g from v_protein_target" \
+  "peso 92.5 120/148/204"
+expect_eq "v_sessions: plan_kind (adicionado = remarcado)" bot - \
+  "select count(*) filter (where s.override_id is not null and v.plan_kind is null) from sessions s join v_sessions v using (id)" 0
 expect_eq "Epley: 100 kg × 10 = 133,33"     bot - "select round(100 * (1 + 10 / 30.0), 2)" "133.33"
 expect_ok "Epley em v_e1rm confere"         bot - "select 1/(count(*) = 0)::int from v_e1rm where e1rm <> round(kg * (1 + reps / 30.0), 2) or reps > 12"
 expect_ok "há PRs com flag"                 bot - "select 1/(count(*) > 0)::int from v_prs where is_pr"
@@ -297,6 +334,12 @@ if [[ -x "$ROOT/web/node_modules/.bin/jiti" ]]; then
   if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-balance.ts 2>&1)"; then
     ok "saldo da semana e do mês: $(grep -c '  ok' <<<"$out") casos"
   else fail "saldo da semana e do mês (web/scripts/test-balance.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
+  if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-training.ts 2>&1)"; then
+    ok "meta semanal, mapa de calor, contagem por ficha e histórico: $(grep -c '  ok' <<<"$out") casos"
+  else fail "meta semanal / mapa de calor (web/scripts/test-training.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
+  if out="$(cd "$ROOT/web" && node_modules/.bin/jiti scripts/test-protein.ts 2>&1)"; then
+    ok "faixa de proteína (zonas): $(grep -c '  ok' <<<"$out") casos"
+  else fail "faixa de proteína (web/scripts/test-protein.ts)" "$(grep -E 'FAIL|rror' <<<"$out" | head -8)"; fi
 else fail "PR no app" "web/node_modules ausente (rode npm install em web/)"; fi
 expect_ok "média 7d por janela de data"     bot - \
   "select 1/(count(*) = 0)::int from v_weight_trend t where t.avg_7d <> round((select avg(b.peso_kg) from body_metrics b where b.peso_kg is not null and b.date between t.date - 6 and t.date), 2)"
