@@ -81,6 +81,30 @@ export const useAllSessions = () =>
  */
 const missingView = (e: unknown) => /PGRST205|Could not find the (table|relation)|does not exist/i.test(String((e as Error)?.message ?? e))
 
+/**
+ * Lembra por 6 h que uma view ainda não existe, para não repetir o 404 (e o erro no console) a cada
+ * carregamento; depois disso tenta de novo e, quando a migração chegar, volta a usar a view sozinho.
+ */
+const MISSING_KEY = 'missing_views'
+const MISSING_TTL = 6 * 60 * 60 * 1000
+function knownMissing(view: string) {
+  try { const t = (JSON.parse(localStorage.getItem(MISSING_KEY) ?? '{}') as Record<string, number>)[view]; return !!t && Date.now() - t < MISSING_TTL } catch { return false }
+}
+function markMissing(view: string) {
+  try { const m = JSON.parse(localStorage.getItem(MISSING_KEY) ?? '{}') as Record<string, number>; m[view] = Date.now(); localStorage.setItem(MISSING_KEY, JSON.stringify(m)) } catch { /* sem storage */ }
+}
+/** Lê a view; se ela não existe (ou já se sabe que não existe), usa `fallback` (mesma regra, no cliente). */
+async function viewOr<T>(view: string, read: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+  if (knownMissing(view)) return fallback()
+  try {
+    return await read()
+  } catch (e) {
+    if (!missingView(e)) throw e
+    markMissing(view)
+    return fallback()
+  }
+}
+
 /** goals como objeto livre: colunas novas podem não existir ainda (migração pendente). */
 const goalsRow = () => one<Record<string, unknown>>(db().from('goals').select('*').limit(1))
 const numOr = (v: unknown, d: number) => (v == null || v === '' || Number.isNaN(Number(v)) ? d : Number(v))
@@ -89,18 +113,15 @@ const numOr = (v: unknown, d: number) => (v == null || v === '' || Number.isNaN(
 export const useTrainingWeeks = () =>
   useQuery({
     queryKey: ['v_training_weeks'],
-    queryFn: async () => {
-      try {
-        return await rows<TrainingWeek>(db().from('v_training_weeks').select('*').order('week_start'))
-      } catch (e) {
-        if (!missingView(e)) throw e
+    queryFn: () => viewOr('v_training_weeks',
+      () => rows<TrainingWeek>(db().from('v_training_weeks').select('*').order('week_start')),
+      async () => {
         const [sessions, g] = await Promise.all([
           rows<Pick<SessionRow, 'date' | 'status' | 'modality'>>(db().from('sessions').select('date, status, modality').order('date')),
           goalsRow(),
         ])
         return trainingWeeksFrom(sessions, { min: numOr(g?.weekly_sessions_min, GOAL_DEFAULT.min), max: numOr(g?.weekly_sessions_max, GOAL_DEFAULT.max) }, todaySP())
-      }
-    },
+      }),
   })
 
 /** Semana atual da meta (última linha de v_training_weeks). */
@@ -516,11 +537,9 @@ export const useProteinTarget = () =>
   useQuery({
     queryKey: ['v_protein_target'],
     staleTime: 5 * 60_000,
-    queryFn: async () => {
-      try {
-        return await one<ProteinTarget>(db().from('v_protein_target').select('*'))
-      } catch (e) {
-        if (!missingView(e)) throw e
+    queryFn: () => viewOr('v_protein_target',
+      () => one<ProteinTarget>(db().from('v_protein_target').select('*')),
+      async () => {
         const [w, pf, g] = await Promise.all([
           one<{ date: string; peso_kg: number }>(db().from('body_metrics').select('date, peso_kg').not('peso_kg', 'is', null).order('date', { ascending: false }).limit(1)),
           one<{ height_cm: number | null }>(db().from('profile').select('height_cm').limit(1)),
@@ -532,8 +551,7 @@ export const useProteinTarget = () =>
           gPerKg: { min: g?.protein_min_g_per_kg as number | null, ideal: g?.protein_ideal_g_per_kg as number | null, cap: g?.protein_cap_g_per_kg as number | null },
           bmiMax: g && 'protein_ref_bmi_max' in g ? (g.protein_ref_bmi_max == null ? null : Number(g.protein_ref_bmi_max)) : undefined,
         })
-      }
-    },
+      }),
   })
 
 export const useFoodLogs = (date: string) =>
