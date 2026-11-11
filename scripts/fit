@@ -7,10 +7,10 @@ Datas: AAAA-MM-DD, 'hoje', 'ontem', 'amanha' ou dd/mm. Horas: HH:MM.
 
 LEITURA
   fit today                                   plano de hoje (v_today) com status
-  fit week [--next]                           semana atual (ou a próxima) com exceções e status
-  fit evo                                     recomposição + tendência de peso + PRs recentes ("como estou indo?")
-  fit summary [week|month] [--n 2]            resumos (v_weekly_summary / v_monthly_summary)
-  fit day [data]                              refeições do dia + totais vs metas
+  fit week [--next]                           meta semanal (N/4 · faixa 4–9) + semana atual (ou a próxima) com exceções e status
+  fit evo                                     recomposição + peso + PRs recentes + meta semanal ("como estou indo?")
+  fit summary [week|month] [--n 2]            resumos: treinos vs meta semanal, PRs, kcal, proteína por zona, peso, cintura
+  fit day [data]                              meta semanal + refeições do dia + totais (proteína por zona, docs/proteina.md)
   fit food <busca> [--limit 8]                busca custom > TBCA > TACO (sem acento, por similaridade; coluna fonte)
   fit notes [--limit 10]                      últimas notas do assistente
   fit sessions [--limit 10]                   últimas sessões (v_sessions)
@@ -51,7 +51,6 @@ NUTRIÇÃO
   fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
   fit tbca "<termo ou código>" [--all] [--limit 10]     busca no site da TBCA, baixa o detalhe e cadastra em foods (fonte TBCA)
         um resultado (ou código exato): cadastra. Vários: lista; escolha com fit tbca <código> ou cadastre os listados com --all
-  fit creatine [sim|nao] [--g 5] [--date d]             check de creatina
   fit water <ml> [--date d]                             água do dia
   fit steps <n> [--date d]                              passos do dia (só exibição; não mudam o gasto)
 
@@ -69,7 +68,7 @@ MANUTENÇÃO
   fit admin-sql "<SQL>"                                 como postgres (evitar; só manutenção)
 
 Token: $SUPABASE_ACCESS_TOKEN ou /home/box/.secrets/supabase_access_token (nunca impresso).
-FIT_ROLLBACK=1 executa cada comando e desfaz (teste sem gravar).
+FIT_ROLLBACK=1 executa cada comando e desfaz (teste sem gravar). FIT_PSQL=<dsn> roda o mesmo SQL num Postgres local (testes).
 """
 import datetime as dt, json, os, re, sys, urllib.error, urllib.parse, urllib.request
 from zoneinfo import ZoneInfo
@@ -92,7 +91,20 @@ def token():
     return t
 
 
+def run_psql(dsn, query):
+    """FIT_PSQL=<dsn>: mesmo SQL num Postgres local (testes com scripts/verify_local.sh). Valores voltam como texto."""
+    import csv, io, subprocess
+    p = subprocess.run(["psql", dsn, "-X", "-q", "--csv", "-v", "ON_ERROR_STOP=1", "-f", "-"],
+                       input=query, capture_output=True, text=True)
+    if p.returncode:
+        sys.exit("erro psql: " + p.stderr.strip().splitlines()[-1] if p.stderr.strip() else "erro psql")
+    out = p.stdout.strip()
+    return list(csv.DictReader(io.StringIO(out))) if out else []
+
+
 def run(query):
+    if os.environ.get("FIT_PSQL"):
+        return run_psql(os.environ["FIT_PSQL"], query)
     req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query",
         data=json.dumps({"query": query}).encode(), method="POST",
         headers={"Authorization": "Bearer " + token(), "Content-Type": "application/json", "User-Agent": "fit-cli"})
@@ -212,6 +224,43 @@ def note(kind, text, ref_table=None, ref_id=None):
 
 
 # ---------------------------------------------------------------- leitura
+def nz(v):
+    """Número vindo da API (texto) → float; None fica None."""
+    return None if v is None or v == "" else float(v)
+
+
+def week_reading(done, gmin, gmax, current):
+    """Mesma leitura do app (web/src/lib/training.ts weekReading)."""
+    if done > gmax:
+        return f"acima do máximo ({gmax})"
+    if done >= gmin:
+        return "no máximo da faixa" if done == gmax else "na faixa"
+    left = gmin - done
+    return (f"falta 1 para o mínimo" if left == 1 else f"faltam {left} para o mínimo") if current else "abaixo do mínimo"
+
+
+def week_goal_line(d=None):
+    """'Treinos na semana: 3/4 · faixa 4–9 · falta 1 para o mínimo · 2 semanas seguidas no mínimo' (v_training_weeks)."""
+    where = f"{lit(d)}::date between week_start and week_end" if d else "is_current"
+    r = bot(f"select week_start, week_end, is_current, done, missed, goal_min, goal_max, streak_weeks, by_modality::text as mods "
+            f"from v_training_weeks where {where}")
+    if not r:
+        return "Treinos na semana: 0 (sem registro nessa semana)"
+    r = r[0]
+    done, gmin, gmax = int(r["done"]), int(r["goal_min"]), int(r["goal_max"])
+    cur = str(r["is_current"]).lower() in ("true", "t")
+    parts = [f"{done}/{gmin} · faixa {gmin}–{gmax}", week_reading(done, gmin, gmax, cur)]
+    if int(r["missed"]):
+        parts.append(f"{r['missed']} falta(s)")
+    st = int(r["streak_weeks"])
+    if st:
+        parts.append(f"{st} semana(s) seguida(s) no mínimo")
+    mods = json.loads(r["mods"] or "{}")
+    if mods:
+        parts.append(", ".join(f"{k} {v}" for k, v in sorted(mods.items())))
+    return f"Treinos na semana ({r['week_start']} a {r['week_end']}): " + " · ".join(parts)
+
+
 def cmd_today(a):
     table(bot("select to_char(start_time,'HH24:MI') as hora, title, modality_label as modalidade, plan_kind as tipo, "
               "coalesce(session_status, case when active then 'pendente' else 'pulado' end) as status, "
@@ -228,6 +277,9 @@ def cmd_week(a):
         rows = bot("select date, to_char(start_time,'HH24:MI') as hora, title, plan_kind as tipo, "
                    "case when active then coalesce(session_status,'') else 'pulado' end as status, motivo "
                    "from v_week order by date, start_time")
+    if not o.get("next"):
+        print(week_goal_line())
+        print("(a grade é plano flexível: qualquer atividade feita conta para a meta)")
     table(rows)
 
 
@@ -240,39 +292,93 @@ def cmd_evo(a):
     print("# PRs (últimos 14 dias)")
     table(bot("select date, exercise_name, kg, reps, e1rm, is_load_pr, is_e1rm_pr from v_prs "
               "where is_pr and date >= today_sp() - 14 order by date desc, logged_at desc limit 20"))
-    print("# aderência (v_streaks)")
-    table(bot("select modality, this_week_done || '/' || this_week_planned as semana, current_streak_weeks as streak, "
-              "best_streak_weeks as melhor from v_streaks order by modality"))
+    print("# meta semanal (v_training_weeks: feito + parcial, qualquer modalidade)")
+    print(week_goal_line())
+    table(bot("select week_start as semana, done || '/' || goal_min || ' (' || goal_min || '–' || goal_max || ')' as treinos, "
+              "status, missed as faltas, streak_weeks as sequencia, best_streak_weeks as melhor "
+              "from v_training_weeks order by week_start desc limit 6"))
 
 
 def cmd_summary(a):
     pos, o = opts(a, flags=("n",))
     unit = (pos[0] if pos else "week")
     n = int(o.get("n", 2))
-    view = "v_monthly_summary" if unit.startswith("m") else "v_weekly_summary"
-    show(bot(f"select * from {view} order by period_start desc limit {n}"))
+    month = unit.startswith("m")
+    view = "v_monthly_summary" if month else "v_weekly_summary"
+    # treinos = sessões feito + parcial no período (qualquer modalidade, mesma regra da meta semanal);
+    # a aderência à grade (planned/done) e a creatina saíram dos resumos em 11/11/2026
+    show(bot(
+        f"select s.period_start, s.period_end, (today_sp() between s.period_start and s.period_end) as em_andamento, "
+        f"x.treinos, g.goal_min || '–' || g.goal_max as faixa_semana, "
+        # semana: o próprio número; mês: ritmo por semana nos dias já vividos (mês em andamento não divide pelo mês todo)
+        f"case when s.days_in_period > 7 then round(x.treinos / ((least(s.period_end, today_sp()) - s.period_start + 1) / 7.0), 1) end as treinos_por_semana, "
+        f"case when s.days_in_period <= 7 then "
+        f"       case when x.treinos > g.goal_max then 'acima do máximo' when x.treinos >= g.goal_min then 'na faixa' "
+        f"            when today_sp() between s.period_start and s.period_end then 'faltam ' || (g.goal_min - x.treinos) || ' para o mínimo' "
+        f"            else 'abaixo do mínimo' end "
+        f"     else case when x.treinos / ((least(s.period_end, today_sp()) - s.period_start + 1) / 7.0) > g.goal_max then 'média acima do máximo' "
+        f"               when x.treinos / ((least(s.period_end, today_sp()) - s.period_start + 1) / 7.0) >= g.goal_min then 'média na faixa' "
+        f"               else 'média abaixo do mínimo' end end as meta, "
+        f"x.faltas, x.por_modalidade, s.n_prs, s.n_sets, round(s.volume_kg) as volume_kg, "
+        f"s.days_logged || '/' || s.days_in_period as dias_com_refeicao, s.kcal_avg, s.kcal_target, s.protein_avg_g, "
+        f"case when s.protein_avg_g is null or p.min_g is null then null when s.protein_avg_g < p.min_g then 'abaixo' "
+        f"     when s.protein_avg_g < p.ideal_g then 'ok' when s.protein_avg_g <= p.cap_g then 'ideal' else 'acima' end as proteina_zona, "
+        f"p.min_g || ' / ' || p.ideal_g || '–' || p.cap_g as proteina_min_ideal_g, "
+        f"s.weight_avg7_end, s.weight_delta_kg, s.waist_last_cm "
+        f"from {view} s "
+        f"cross join (select coalesce(max(goal_min), 4) as goal_min, coalesce(max(goal_max), 9) as goal_max from v_training_weeks where is_current) g "
+        f"cross join v_protein_target p "
+        f"cross join lateral (select count(*) filter (where z.status in ('feito', 'parcial'))::int as treinos, "
+        f"  count(*) filter (where z.status = 'faltou')::int as faltas, "
+        f"  (select jsonb_object_agg(m.modality, m.n) from (select y.modality, count(*) as n from sessions y "
+        f"   where y.status in ('feito', 'parcial') and y.date between s.period_start and s.period_end group by y.modality) m) as por_modalidade "
+        f"  from sessions z where z.date between s.period_start and s.period_end) x "
+        f"order by s.period_start desc limit {n}"))
 
 
 def cmd_day(a):
     d = pdate(a[0] if a else None)
+    print(week_goal_line(d))
     table(bot(f"select left(id::text, 8) as id, meal as refeicao, description as item, grams as g, portion_label as medida, "
               f"round(kcal) as kcal, round(protein_g,1) as p, round(carb_g,1) as c, round(fat_g,1) as g_, estimated as est "
               f"from food_logs where date = {lit(d)} order by logged_at"))
     totals(d)
 
 
+PROTEIN_ZONE = {"abaixo": "abaixo do mínimo", "ok": "mínimo ok", "ideal": "ideal", "acima": "acima do teto útil"}
+
+
+def protein_zone(g, t):
+    """Zonas de v_protein_target (docs/proteina.md): abaixo < mín ≤ ok < ideal ≤ ideal ≤ teto < acima."""
+    if t.get("min_g") is None:
+        return None
+    if g < nz(t["min_g"]):
+        return "abaixo"
+    if g < nz(t["ideal_g"]):
+        return "ok"
+    return "ideal" if g <= nz(t["cap_g"]) else "acima"
+
+
 def totals(d):
     r = bot(f"select coalesce(n.kcal,0) as kcal, coalesce(n.protein_g,0) as p, coalesce(n.carb_g,0) as c, coalesce(n.fat_g,0) as g, "
-            f"coalesce(n.creatine,false) as creatina, t.kcal_target, t.protein_min_g, t.protein_max_g, t.carb_target_g, t.fat_min_g, t.fat_max_g "
-            f"from v_nutrition_targets t left join v_daily_nutrition n on n.date = {lit(d)}")
+            f"t.kcal_target, t.carb_target_g, t.fat_min_g, t.fat_max_g, "
+            f"pt.min_g, pt.ideal_g, pt.cap_g, pt.ref_weight_kg, pt.ref_basis "
+            f"from v_nutrition_targets t cross join v_protein_target pt left join v_daily_nutrition n on n.date = {lit(d)}")
     if not r:
         return
     r = {k: (float(v) if isinstance(v, str) and re.fullmatch(r"-?[\d.]+", v) else v) for k, v in r[0].items()}
     def falta(have, target):
         return f" (faltam {max(0, round(target - have))})" if target else ""
-    print(f"total {d}: {round(r['kcal'])} kcal{' / ' + str(r['kcal_target']) if r['kcal_target'] else ''}{falta(r['kcal'], r['kcal_target'])} · "
-          f"proteína {round(r['p'])} g / {r['protein_min_g']}–{r['protein_max_g']}{falta(r['p'], r['protein_min_g'])} · "
-          f"carbo {round(r['c'])} g · gordura {round(r['g'])} g · creatina {'ok' if r['creatina'] else 'não'}")
+    z = protein_zone(r["p"], r)
+    if z is None:
+        prot = f"proteína {round(r['p'])} g (faixa depois da 1ª pesagem)"
+    else:
+        label = PROTEIN_ZONE[z] + (" até agora" if z == "abaixo" and d == today().isoformat() else "")
+        ref = f", ref. {r['ref_weight_kg']:g} kg{' (teto IMC 30)' if r['ref_basis'] == 'teto_imc' else ''}"
+        prot = (f"proteína {round(r['p'])} g · {label} (mínimo {round(r['min_g'])} · ideal {round(r['ideal_g'])}–"
+                f"{round(r['cap_g'])} g{ref})")
+    print(f"total {d}: {round(r['kcal'])} kcal{' / ' + str(round(r['kcal_target'])) if r['kcal_target'] else ''}{falta(r['kcal'], r['kcal_target'])} · "
+          f"{prot} · carbo {round(r['c'])} g · gordura {round(r['g'])} g")
 
 
 def cmd_food(a):
@@ -845,13 +951,9 @@ def cmd_portion(a):
 
 
 def cmd_creatine(a):
-    pos, o = opts(a, flags=("g", "date"))
-    v = (pos[0] if pos else "sim").lower() not in ("nao", "não", "no", "off", "false")
-    d = pdate(o.get("date"))
-    g = pnum(o["g"]) if "g" in o else None
-    show(bot(f"insert into daily_checks (date, creatine, creatine_g, source) values ({lit(d)}, {str(v).lower()}, {lit(g)}::numeric, 'bot') "
-             f"on conflict (date) do update set creatine = excluded.creatine, creatine_g = coalesce(excluded.creatine_g, daily_checks.creatine_g), "
-             f"source = 'bot' returning date, creatine, creatine_g"))
+    # Creatina saiu do app e dos resumos em 11/11/2026 (pedido do Kaluan). Os registros antigos
+    # (daily_checks.creatine) continuam no banco; nada novo é gravado.
+    sys.exit("creatina não é mais registrada (saiu do app e dos resumos em 11/11/2026); nada gravado")
 
 
 def cmd_water(a):

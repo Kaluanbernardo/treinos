@@ -11,7 +11,7 @@ Full product plan (pt-BR, authoritative): `../app-plan.md`. Product context for 
 
 - Single owner, hardcoded. No multi-user, signup, onboarding, settings screens, or data-entry forms
   (weight, measurements, meals, photos all come through the chat). The only writes the app makes are the
-  gym-floor taps: workout sets/sessions, Feito/Faltei, creatine check, plus the basal profile
+  gym-floor taps: workout sets/sessions, Feito/Faltei, plus the basal profile
   (height / birth date / sex) in Configurações, by Kaluan's explicit request.
 - UI copy is **pt-BR**. Code, identifiers and comments may be English or Portuguese; match the file.
 - Never print or commit secrets. `.env*` is gitignored. Secrets live in `/home/box/.secrets/` (chmod 600).
@@ -70,8 +70,13 @@ All through `scripts/fit` (runs each statement as `set local role bot` over the 
 per call; refuses role/transaction escapes). `scripts/fit --help` lists every command. Main ones:
 `today`, `week`, `session` (fiz/faltei), `log-set`, `carga`, `move` / `skip` / `add` (schedule overrides),
 `body` (weight + measurements), `photo` (progress photos → private bucket), `food` (TBCA search, TACO fallback), `meal`,
-`creatine`, `kcal` / `kcal-day` / `perfil` (calorias, see `docs/calorias.md`), `note`, `notes`, `evo`, `summary`, `videos`, `sql "<select>"`. Autonomy rules and chat rituals are in
+`kcal` / `kcal-day` / `perfil` (calorias, see `docs/calorias.md`), `note`, `notes`, `evo`, `summary`, `videos`, `sql "<select>"`. Autonomy rules and chat rituals are in
 `docs/assistente.md`. Meaningful changes always get a `bot_notes` row (shown on the app's Notas screen).
+
+Main training metric: **weekly goal of 4–9 activities done** (any modality; `v_training_weeks`), not adherence to
+the schedule grid (the grid stays as a flexible plan). Protein is a **band with zones** (min 1.3 · ideal 1.6–2.2 g/kg
+of a reference weight capped at BMI 30; `v_protein_target`, rule and sources in `docs/proteina.md`). Creatine was
+removed from the app and summaries on 2026-11-11 (historical data stays). Front-end tests: `cd web && npm test`.
 
 ## Design direction
 

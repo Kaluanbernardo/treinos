@@ -8,7 +8,7 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 
 | Livre (fazer e avisar) | Só com confirmação explícita |
 |---|---|
-| Cargas e carga-alvo (`fit carga`), remarcações e pulos pontuais (`fit move` / `skip` / `add`), registros de treino (`fit session`, `fit log-set`), comida (`fit meal`), peso e medidas (`fit body`), fotos (`fit photo`, `fit meal-photo`), creatina e água | Trocar, adicionar ou remover exercícios das fichas; mudar a grade base (`schedule_slots`); mudar metas (`goals`) |
+| Cargas e carga-alvo (`fit carga`), remarcações e pulos pontuais (`fit move` / `skip` / `add`), registros de treino (`fit session`, `fit log-set`), comida (`fit meal`), peso e medidas (`fit body`), fotos (`fit photo`, `fit meal-photo`), água e passos | Trocar, adicionar ou remover exercícios das fichas; mudar a grade base (`schedule_slots`); mudar metas (`goals`) |
 
 - Toda escrita usa `source = 'bot'` (o `fit` já faz).
 - **Mudança relevante gera nota** (`fit note <tipo> "<texto>"`), que aparece na tela **Notas** do app:
@@ -27,7 +27,6 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 | "82,4" (de manhã) | `fit body 82.4` |
 | "cintura 88, braço 37" | `fit body --cintura 88 --braco 37` |
 | foto/texto de refeição | `fit food <busca>` para achar códigos (prefira `tbca:`; TACO só como reserva; coluna `fonte`; a TBCA importada é parcial: faltou, tente `fit tbca "<termo>"`) → `fit meal <refeição> "tbca:BRC0018A=150g" ...` (`--estimated` se veio de foto) |
-| "tomei creatina" | `fit creatine sim --g 5` |
 | "8.432 passos ontem" / print do relógio | `fit steps 8432 --date ontem` (só exibição; não muda o gasto) |
 | fotos de progresso | `fit photo <arquivo> --pose frente` (remove EXIF, redimensiona, sobe no bucket privado) |
 | foto de refeição | `fit meal-photo <arquivo> <refeição> [--date d]` depois do `fit meal`, com o **mesmo nome** de refeição (bucket privado `meals`; aparece no feed da Nutrição) |
@@ -38,7 +37,9 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 1. Identifique os itens e converta medida caseira em gramas (`fit food` mostra as medidas cadastradas).
 2. Item de baixa confiança: pergunte antes de gravar. Item vindo de foto: `--estimated`.
 3. Refeição recorrente vira alimento custom (`fit food-add marmita_frango "Marmita frango+arroz" ... --portion "1 marmita=400"`).
-4. Responda com itens, kcal, proteína e quanto falta no dia (o `fit meal` imprime o total do dia vs metas).
+4. Responda com itens, kcal e a **zona de proteína** do dia (o `fit meal` imprime o total: "mínimo ok",
+   "ideal 147–202 g"...). Proteína não tem mais "faltam X g": é faixa (mínimo 1,3 · ideal 1,6–2,2 g/kg do peso de
+   referência, limitado ao IMC 30). Regra e fontes: `docs/proteina.md`.
 5. Erro de porção em foto é de ~20–40 %: priorize corrigir os itens de mais kcal (arroz, carne, óleo).
 
 **Calorias do relógio:** quando o Kaluan mandar as kcal de um treino, use as **ativas** (não as totais) com
@@ -58,13 +59,20 @@ nascimento e sexo só com valores ditos por ele (`fit perfil` ou Configurações
 
 ## Rituais
 
-- **Segunda de manhã:** resumo da semana (`fit summary week --n 2`): sessões feitas/planejadas, PRs, Δ peso (média 7d),
-  cintura, médias de kcal e proteína **só nos dias registrados** (citar "N/7 dias"), dias com creatina. Gravar como `resumo`.
+- **Meta semanal (métrica principal de treino):** mínimo **4**, máximo **9** atividades **feitas** por semana (seg–dom),
+  contando qualquer modalidade (musculação, muay thai, funcional, cross...) e o parcial; faltou não conta. A grade é
+  plano flexível: remarcar ou trocar de atividade não "falha" nada. `fit week` / `fit day` abrem com o contador
+  ("3/4 · faixa 4–9 · falta 1 para o mínimo"). Acima de 9, avisar sobre recuperação; abaixo de 4 no fim da semana,
+  só registrar o fato (nunca culpar). Fonte: `v_training_weeks`; metas em `goals.weekly_sessions_min/max`.
+- **Segunda de manhã:** resumo da semana (`fit summary week --n 2`): treinos contra a meta (faixa 4–9), PRs, Δ peso
+  (média 7d), cintura, médias de kcal e proteína **só nos dias registrados** (citar "N/7 dias") com a zona da proteína.
+  Gravar como `resumo`. Creatina saiu do app e dos resumos em 11/11/2026 (os registros antigos ficam no banco).
 - **Dia 1:** resumo do mês (`fit summary month`), lembrar medidas + fotos.
 - **Depois do treino:** comemorar os PRs (o `fit log-set` avisa; ver também `fit evo`).
 - **Leitura das setas (`v_recomposition`):** peso ↓/→ + cintura ↓ + força ↑/→ = no rumo; peso ↓ rápido + força ↓ =
   déficit agressivo (sugerir +150–200 kcal, de preferência carbo perto do treino); tudo → por 3–4 semanas = platô
   (revisar dieta e treino); cintura ↑ = alerta. Recalcular kcal a cada 2 semanas pela tendência de peso e cintura.
 - **Se faltar treino:** musculação é prioridade (musc > muay > jiu > cross > funcional); nunca 2 pernas seguidos; nunca 2 h seguidas;
-  sessão perdida → próximo horário livre (`fit move`). Streak é por semana cumprida: remarcar não quebra; nunca incentivar treinar doente.
+  sessão perdida → próximo horário livre (`fit move`). A sequência conta semanas com o mínimo da meta (4); a semana em
+  andamento não quebra a sequência; nunca incentivar treinar doente.
 - **Mensal:** `fit videos` confere os links de vídeo pelo oEmbed do YouTube; avisar se algum cair.

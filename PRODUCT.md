@@ -39,7 +39,7 @@ estimated 1RM), never by weight alone.
 - Data enters through chat → assistant → `scripts/fit` → Supabase. The app has no forms for weight,
   measurements, meals or photos.
 - The app writes only gym-floor events: sets (✓ in one tap, ±2.5 kg / ±1 rep), session start/finish,
-  Feito/Faltei for classes, the daily creatine check.
+  Feito/Faltei for classes (the creatine check was removed on 2026-11-11).
 - Weekly cadence: weight daily (≥3×/week), waist weekly, other measurements and progress photos monthly.
 - Online-only; the gym signal is a known risk.
 
