@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { Camera, ChevronLeft, ChevronRight, Flame, Images, Utensils } from 'lucide-react'
 import {
-  useMonthlySummary, useMuscleVolume, usePhotos, useSignedUrls, useStreaks, useWeeklySummary,
+  useMonthlySummary, useMuscleVolume, usePhotos, useProteinTarget, useSignedUrls, useTrainingWeeks, useWeeklySummary,
 } from '../lib/api'
-import type { Modality, PeriodSummary, ProgressPhoto } from '../lib/types'
-import { capitalize, dm, intFmt, monthLabel, monthShort, todaySP, weekStart } from '../lib/format'
+import type { PeriodSummary, ProgressPhoto } from '../lib/types'
+import { capitalize, dm, intFmt, monthLabel, monthShort, num, todaySP, weekStart } from '../lib/format'
+import { GoalBars } from '../components/training'
+import { bandOf } from '../lib/protein'
 import { Button, Collecting, ErrorState, Segmented, Skeleton } from '../components/ui'
 import { Bars } from '../components/charts'
 import { MODALITIES, MODALITY } from '../components/modality'
@@ -16,7 +18,7 @@ export function EvolucaoV2Blocks({ period, slot }: { period: Period; slot: 'resu
   return (
     <>
       <VolumeGrupoBlock period={period} />
-      <AderenciaBlock period={period} />
+      <FrequenciaBlock period={period} />
       <NutricaoTrendBlock period={period} />
       <FotosBlock />
     </>
@@ -104,77 +106,67 @@ function VolumeGrupoBlock({ period }: { period: Period }) {
   )
 }
 
-// ---------------------------------------------------------------- 5. aderência
-function AderenciaBlock({ period }: { period: Period }) {
-  const streaks = useStreaks()
-  const weekly = useWeeklySummary()
+// ---------------------------------------------------------------- 5. frequência (meta semanal)
+/** Treinos feitos por semana contra a faixa da meta (4–9), sequência de semanas com o mínimo e o total por modalidade. */
+function FrequenciaBlock({ period }: { period: Period }) {
+  const q = useTrainingWeeks()
   const cut = cutoffFor(period)
-  if (streaks.isPending || weekly.isPending) return <Skeleton className="h-72" />
-  if (streaks.isError || weekly.isError) return <ErrorState what="a aderência" onRetry={() => { streaks.refetch(); weekly.refetch() }} />
-  const weeks = (weekly.data ?? []).filter((w) => w.period_end >= cut).slice(-12)
-  const total = streaks.data!.find((s) => s.modality === 'total')
-  const completed = weeks.filter((w) => w.period_end < todaySP())
+  if (q.isPending) return <Skeleton className="h-72" />
+  if (q.isError) return <ErrorState what="a frequência" onRetry={() => q.refetch()} />
+  const all = q.data ?? []
+  const cur = all.find((w) => w.is_current)
+  const weeks = all.filter((w) => w.week_end >= cut).slice(-16)
+  const closed = weeks.filter((w) => !w.is_current)
+  const met = closed.filter((w) => w.met).length
+  const avg = closed.length ? closed.reduce((s, w) => s + w.done, 0) / closed.length : null
+  const byMod = MODALITIES.map((m) => ({ m, n: weeks.reduce((s, w) => s + (w.by_modality?.[m] ?? 0), 0) })).filter((x) => x.n > 0)
+  const total = byMod.reduce((s, x) => s + x.n, 0)
 
   return (
-    <Block id="b-aderencia" title="Aderência" sub="Semanas cumprindo o plano">
-      <div className="flex items-center gap-4 rounded-2xl bg-card-2 p-4">
-        <Flame size={34} className={total?.current_streak_weeks ? 'text-kcal' : 'text-muted'} aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[28px] font-bold leading-none tabular-nums">{total?.current_streak_weeks ?? 0}<span className="ml-1.5 text-base font-medium text-muted">{total?.current_streak_weeks === 1 ? 'semana seguida' : 'semanas seguidas'}</span></p>
-          <p className="mt-1 text-sm text-muted">
-            melhor: {total?.best_streak_weeks ?? 0} · esta semana {total?.this_week_done ?? 0}/{total?.this_week_planned ?? 0}
-            {total?.sessions_since_miss ? ` · ${total.sessions_since_miss} sessões sem faltar` : ''}
-          </p>
-        </div>
-      </div>
-      {completed.length === 0 && (
-        <p className="mt-3 text-sm text-muted">A sequência conta a partir do 1º domingo.</p>
-      )}
-
-      <ul className="mt-4 flex flex-col divide-y divide-line">
-        {MODALITIES.map((m) => <ModalityRow key={m} m={m} weeks={weeks} s={streaks.data!.find((x) => x.modality === m)} />)}
-      </ul>
-      <Legend items={[{ swatch: 'bar', label: 'feito', color: 'var(--color-muted)' }, { swatch: 'band', label: 'planejado' }]} />
-    </Block>
-  )
-}
-
-function ModalityRow({ m, weeks, s }: { m: Modality; weeks: PeriodSummary[]; s?: { current_streak_weeks: number; best_streak_weeks: number; this_week_done: number; this_week_planned: number } }) {
-  const info = MODALITY[m]
-  const any = weeks.some((w) => w.by_modality?.[m]?.planned || w.by_modality?.[m]?.done)
-  if (!any && !s?.this_week_planned) return null
-  return (
-    <li className="py-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-center gap-2 font-medium"><span className={`h-2.5 w-2.5 rounded-full ${info.bg}`} aria-hidden="true" />{info.label}</span>
-        <span className="text-sm tabular-nums text-muted">
-          semana <b className="text-fg">{s?.this_week_done ?? 0}/{s?.this_week_planned ?? 0}</b>
-          {s && s.current_streak_weeks > 0 && <> · <Flame size={13} className="inline text-kcal" aria-hidden="true" /> {s.current_streak_weeks}</>}
-          {s && s.best_streak_weeks > 0 && <> · melhor {s.best_streak_weeks}</>}
-        </span>
-      </div>
-      <div className="mt-2 flex h-9 items-end gap-1" role="img"
-        aria-label={`${info.label}: ${weeks.map((w) => `${dm(w.period_start)} ${w.by_modality?.[m]?.done ?? 0} de ${w.by_modality?.[m]?.planned ?? 0}`).join('; ')}`}>
-        {weeks.map((w) => {
-          const p = w.by_modality?.[m]?.planned ?? 0
-          const d = w.by_modality?.[m]?.done ?? 0
-          const h = Math.max(p, d, 1)
-          return (
-            <div key={w.period_start} className="flex h-full flex-1 flex-col justify-end" title={`${dm(w.period_start)}: ${d}/${p}`}>
-              <div className="relative w-full rounded-[4px] bg-ok/20" style={{ height: `${(p / Math.max(h, 2)) * 100}%`, minHeight: p ? 6 : 0 }}>
-                <div className="absolute inset-x-0 bottom-0 rounded-[4px]" style={{ height: `${p ? Math.min(1, d / p) * 100 : d ? 100 : 0}%`, background: info.color }} />
-              </div>
+    <Block id="b-freq" title="Frequência" sub={cur ? `Treinos por semana · faixa ${cur.goal_min}–${cur.goal_max}` : 'Treinos por semana'}>
+      {!cur || weeks.length === 0 ? <Collecting title="Sem treinos registrados ainda" /> : (
+        <>
+          <div className="flex items-center gap-4 rounded-2xl bg-card-2 p-4">
+            <Flame size={34} className={cur.streak_weeks ? 'text-kcal' : 'text-muted'} aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[28px] font-bold leading-none tabular-nums">{cur.streak_weeks}<span className="ml-1.5 text-base font-medium text-muted">{cur.streak_weeks === 1 ? 'semana com o mínimo' : 'semanas seguidas com o mínimo'}</span></p>
+              <p className="mt-1 text-sm tabular-nums text-muted">
+                melhor: {cur.best_streak_weeks} · esta semana {cur.done}/{cur.goal_min}
+                {closed.length > 0 && ` · ${met} de ${closed.length} ${closed.length === 1 ? 'semana fechada' : 'semanas fechadas'} no mínimo`}
+              </p>
             </div>
-          )
-        })}
-      </div>
-    </li>
+          </div>
+          {weeks.length >= 2 ? (
+            <div className="mt-4"><GoalBars weeks={weeks} height={120} label="Treinos feitos por semana contra a faixa da meta" /></div>
+          ) : <p className="mt-3 text-sm text-muted">As colunas aparecem a partir da 2ª semana.</p>}
+          <Legend items={[{ swatch: 'band', label: `faixa ${cur.goal_min}–${cur.goal_max}` }, { swatch: 'bar', label: 'esta semana', color: 'var(--color-lime)' }, { swatch: 'bar', label: 'no mínimo', color: 'color-mix(in srgb, var(--color-fg) 70%, transparent)' }]} />
+          {avg != null && <p className="mt-2 text-sm tabular-nums text-muted">Média {num(avg)} por semana nas {closed.length} semanas fechadas do período.</p>}
+
+          {total > 0 && (
+            <div className="mt-5 border-t border-line pt-4">
+              <h3 className="text-sm font-medium text-muted">Por modalidade no período</h3>
+              <div className="mt-2 flex h-3 gap-0.5 overflow-hidden rounded-full" role="img"
+                aria-label={byMod.map((x) => `${MODALITY[x.m].label}: ${x.n}`).join('; ')}>
+                {byMod.map((x) => <span key={x.m} className="h-full" style={{ width: `${(x.n / total) * 100}%`, background: MODALITY[x.m].color }} />)}
+              </div>
+              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums">
+                {byMod.map((x) => (
+                  <li key={x.m} className="flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${MODALITY[x.m].bg}`} aria-hidden="true" />{MODALITY[x.m].label} <b>{x.n}</b></li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </Block>
   )
 }
 
 // ---------------------------------------------------------------- 6. nutrição por semana
 function NutricaoTrendBlock({ period }: { period: Period }) {
   const weekly = useWeeklySummary()
+  const protein = useProteinTarget()
+  const band = bandOf(protein.data)
   const cut = cutoffFor(period)
   if (weekly.isPending) return <Skeleton className="h-64" />
   if (weekly.isError) return <ErrorState what="a nutrição" onRetry={() => weekly.refetch()} />
@@ -190,7 +182,7 @@ function NutricaoTrendBlock({ period }: { period: Period }) {
         <>
           <h3 className="text-sm font-medium text-muted">Proteína (g/dia)</h3>
           <Bars ariaLabel="Média semanal de proteína" color="var(--color-protein)" unit="g" height={140}
-            band={last?.protein_target_min_g && last.protein_target_max_g ? [Number(last.protein_target_min_g), Number(last.protein_target_max_g)] : null}
+            band={band ? [band.ideal, band.cap] : null} refLine={band?.min ?? null}
             data={weeks.map((w) => ({ key: w.period_start, label: dm(w.period_start), value: Number(w.protein_avg_g ?? 0), sub: `${w.days_logged}/7 dias registrados`, highlight: w.days_logged >= 5 }))} />
           <h3 className="mt-4 text-sm font-medium text-muted">Calorias (kcal/dia)</h3>
           <Bars ariaLabel="Média semanal de calorias" color="var(--color-kcal)" unit="kcal" height={140} refLine={last?.kcal_target ?? null}
@@ -203,7 +195,7 @@ function NutricaoTrendBlock({ period }: { period: Period }) {
               </li>
             ))}
           </ul>
-          <Legend items={[{ swatch: 'band', label: 'meta de proteína' }, { swatch: 'bar', label: 'semana < 5 dias (mais clara)', color: 'var(--color-muted)' }]} />
+          <Legend items={[{ swatch: 'band', label: band ? `proteína ideal ${band.ideal}–${band.cap} g` : 'proteína ideal' }, ...(band ? [{ swatch: 'line' as const, label: `mínimo ${band.min} g`, color: 'var(--color-muted)' }] : []), { swatch: 'bar', label: 'semana < 5 dias (mais clara)', color: 'var(--color-muted)' }]} />
         </>
       )}
     </Block>

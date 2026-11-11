@@ -1,13 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { CalendarCheck, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Droplets, ImageOff, Maximize2, MessageCircle, Pill, X } from 'lucide-react'
-import { useDailyNutrition, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useSignedUrls, useToggleCreatine } from '../lib/api'
-import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets } from '../lib/types'
-import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
-import { Badge, Button, Card, ErrorState, IconButton, Segmented, Skeleton, haptic, toast } from '../components/ui'
+import { CalendarCheck, Camera, ChevronDown, ChevronLeft, ChevronRight, Droplets, ImageOff, Maximize2, MessageCircle, X } from 'lucide-react'
+import { useDailyNutrition, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useProteinTarget, useSignedUrls } from '../lib/api'
+import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets, ProteinTarget } from '../lib/types'
+import { TZ, addDays, capitalize, dm, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
+import { Badge, Button, Card, ErrorState, IconButton, Segmented, Skeleton } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
 import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
 import { PeriodStepper, SaldoPeriodo } from './SaldoPeriodo'
+import { ProteinZoneBar, ZoneChip } from '../components/Protein'
+import { bandOf, proteinZone } from '../lib/protein'
 
 const EMPTY: DailyNutrition = { date: '', kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: false, creatine_g: null, water_ml: null }
 
@@ -20,6 +22,7 @@ export function Nutricao() {
   const today = todaySP()
   const daily = useDailyNutrition()
   const targets = useNutritionTargets()
+  const protein = useProteinTarget()
   const logs = useFoodLogs(date)
   const photos = useMealPhotos(date)
   // hoje: metas com/sem treino (lib/kcal.ts); dias passados: gasto real. Mesma janela de 60 dias da aba Calorias.
@@ -69,7 +72,7 @@ export function Nutricao() {
       ) : daily.isPending || targets.isPending || energy.isPending || (isToday && kt.isPending) ? (
         <Skeleton className="h-80" />
       ) : (
-        <Macros day={day} t={t ?? null} k={k}
+        <Macros day={day} t={t ?? null} k={k} pt={protein.data ?? null} inProgress={isToday}
           ideal={isToday ? mainTarget(k) : idealKcal(energyDay, t?.kcal_target ?? null)}
           dynamic={isToday ? !!k?.dynamic : hasDynamicIdeal(energyDay)} />
       )}
@@ -86,21 +89,20 @@ export function Nutricao() {
               : <Feed meals={meals} />}
       </section>
 
-      <div className="lg:col-start-1"><Checks day={day} date={date} t={t ?? null} /></div>
+      <div className="lg:col-start-1"><Water day={day} t={t ?? null} /></div>
       </>}
     </div>
   )
 }
 
-function Macros({ day, t, k, ideal, dynamic }: {
-  day: DailyNutrition; t: NutritionTargets | null; k: KcalTargets | null; ideal: number | null; dynamic: boolean
+function Macros({ day, t, k, pt, inProgress, ideal, dynamic }: {
+  day: DailyNutrition; t: NutritionTargets | null; k: KcalTargets | null; pt: ProteinTarget | null; inProgress: boolean
+  ideal: number | null; dynamic: boolean
 }) {
   const kcalT = ideal
   const kcalPct = pctOf(day.kcal, kcalT)
   const left = kcalT != null ? kcalT - day.kcal : null
-  const pMin = t?.protein_min_g ?? null
   const macros = [
-    { name: 'Proteína', color: 'var(--color-protein)', value: day.protein_g, target: pMin, band: pMin && t?.protein_max_g ? [pMin, t.protein_max_g] as [number, number] : null, of: pMin ? `${pMin}–${t!.protein_max_g}` : null },
     { name: 'Carbo', color: 'var(--color-carb)', value: day.carb_g, target: t?.carb_target_g ?? null, band: null, of: t?.carb_target_g ? `${t.carb_target_g}` : null },
     { name: 'Gordura', color: 'var(--color-fat)', value: day.fat_g, target: t?.fat_min_g ?? null, band: t?.fat_min_g && t.fat_max_g ? [t.fat_min_g, t.fat_max_g] as [number, number] : null, of: t?.fat_min_g ? `${t.fat_min_g}–${t.fat_max_g}` : null },
   ]
@@ -125,6 +127,7 @@ function Macros({ day, t, k, ideal, dynamic }: {
       </div>
       {k?.dynamic && <KcalTargetsBlock k={k} kcal={day.kcal} />}
       <ul className="mt-5 flex flex-col gap-4 border-t border-line pt-5">
+        <li><ProteinRow grams={Number(day.protein_g)} pt={pt} inProgress={inProgress} /></li>
         {macros.map((m) => {
           const pct = m.target ? Math.round((m.value / m.target) * 100) : null
           return (
@@ -174,40 +177,54 @@ function KcalTargetsBlock({ k, kcal }: { k: KcalTargets; kcal: number }) {
   )
 }
 
-function Checks({ day, date, t }: { day: DailyNutrition; date: string; t: NutritionTargets | null }) {
-  const toggle = useToggleCreatine()
-  const lo = t?.water_min_ml ?? null
-  const hi = t?.water_max_ml ?? null
+/**
+ * Proteína por zona (abaixo · ok · ideal · acima do teto útil), sem "faltam X g". Faixa de v_protein_target:
+ * 1,3 / 1,6 / 2,2 g/kg sobre a última pesagem limitada ao IMC 30 (docs/proteina.md).
+ */
+function ProteinRow({ grams, pt, inProgress }: { grams: number; pt: ProteinTarget | null; inProgress: boolean }) {
+  const band = bandOf(pt)
+  const zone = band ? proteinZone(grams, band) : null
   return (
-    <div className="flex flex-col gap-3">
-      <CreatineButton on={day.creatine} onToggle={() => {
-        haptic(15)
-        toggle.mutate({ date, value: !day.creatine }, { onError: () => toast('Não salvou a creatina. Tente de novo.', { tone: 'err' }) })
-      }} />
-      <div className="rounded-2xl bg-card px-4 py-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="flex items-center gap-2 font-semibold"><Droplets size={20} className="text-protein" aria-hidden="true" /> Água</span>
-          <span className="tabular-nums text-muted">
-            {day.water_ml ? <b className="text-lg font-bold text-fg">{num(day.water_ml / 1000)} L</b> : 'sem registro'}
-            {lo && hi ? ` / ${num(lo / 1000)}–${num(hi / 1000)} L` : ''}
-          </span>
-        </div>
-        {lo && hi && <Meter className="mt-2.5" value={day.water_ml ?? 0} max={hi} color="var(--color-protein)" band={[lo, hi]} label={`Água: ${num((day.water_ml ?? 0) / 1000)} L de ${num(lo / 1000)} a ${num(hi / 1000)} L`} />}
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="flex items-center gap-2 font-medium">
+          <span className="h-2.5 w-2.5 rounded-full bg-protein" aria-hidden="true" />Proteína
+        </span>
+        <span className="flex items-center gap-2 tabular-nums text-muted">
+          {zone && <ZoneChip zone={zone} inProgress={inProgress} />}
+          <span><b className="text-lg font-bold text-fg">{intFmt(grams)}</b> g</span>
+        </span>
       </div>
+      {band ? (
+        <>
+          <ProteinZoneBar className="mt-2" grams={grams} band={band}
+            label={`Proteína: ${intFmt(grams)} g. Mínimo ${band.min} g, ideal ${band.ideal} a ${band.cap} g`} />
+          <p className="mt-0.5 text-[13px] text-muted">
+            mínimo {band.min} · ideal {band.ideal}–{band.cap} g
+            {pt?.ref_weight_kg != null && <> · ref. {num(Number(pt.ref_weight_kg))} kg{pt.ref_basis === 'teto_imc' ? ' (teto IMC 30)' : ''}{pt.weight_date ? `, pesagem ${dm(pt.weight_date)}` : ''}</>}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-[13px] text-muted">Faixa de proteína depois da primeira pesagem (mande o peso no chat).</p>
+      )}
     </div>
   )
 }
 
-export function CreatineButton({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Water({ day, t }: { day: DailyNutrition; t: NutritionTargets | null }) {
+  const lo = t?.water_min_ml ?? null
+  const hi = t?.water_max_ml ?? null
   return (
-    <button type="button" onClick={onToggle} aria-pressed={on}
-      className={`flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors duration-150 ${on ? 'bg-lime/12 ring-1 ring-lime/50' : 'bg-card-2 hover:bg-line/60'}`}>
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${on ? 'check-pop action-fill' : 'border-2 border-muted/50 text-muted'}`} aria-hidden="true">
-        {on ? <Check size={20} strokeWidth={3} /> : <Pill size={18} />}
-      </span>
-      <span className="flex-1 font-semibold">Creatina</span>
-      <span className={`text-[15px] font-semibold ${on ? 'text-lime' : 'text-muted'}`}>{on ? 'tomada' : 'marcar'}</span>
-    </button>
+    <div className="rounded-2xl bg-card px-4 py-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="flex items-center gap-2 font-semibold"><Droplets size={20} className="text-protein" aria-hidden="true" /> Água</span>
+        <span className="tabular-nums text-muted">
+          {day.water_ml ? <b className="text-lg font-bold text-fg">{num(day.water_ml / 1000)} L</b> : 'sem registro'}
+          {lo && hi ? ` / ${num(lo / 1000)}–${num(hi / 1000)} L` : ''}
+        </span>
+      </div>
+      {lo && hi && <Meter className="mt-2.5" value={day.water_ml ?? 0} max={hi} color="var(--color-protein)" band={[lo, hi]} label={`Água: ${num((day.water_ml ?? 0) / 1000)} L de ${num(lo / 1000)} a ${num(hi / 1000)} L`} />}
+    </div>
   )
 }
 

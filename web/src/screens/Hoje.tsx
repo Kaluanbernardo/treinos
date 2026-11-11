@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  Ban, Check, ChevronRight, Clock, Dumbbell, Flame, Hourglass, Moon, NotebookText, PencilLine, Play, SlidersHorizontal, Timer, Trophy, X,
+  Ban, Check, ChevronRight, Clock, Dumbbell, Hourglass, Moon, NotebookText, PencilLine, Play, SlidersHorizontal, Timer, Trophy, X,
 } from 'lucide-react'
 import {
   useActiveSession, useBodyMetrics, useDailyNutrition, useDailySteps, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
-  useNutritionTargets, usePrs, useRecomposition, useStartSession, useStreaks, useTemplates, useToday, useToggleCreatine, useWeek,
+  useProteinTarget, usePrs, useRecomposition, useStartSession, useTemplates, useToday, useWeek, useWeekGoal,
   useWeightTrend,
 } from '../lib/api'
 import { go } from '../lib/router'
@@ -17,8 +17,11 @@ import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
 import { SummaryCard } from '../components/SummaryCard'
 import { FichaSheet } from '../components/FichaSheet'
-import { CreatineButton } from './Nutricao'
 import { StepsStat } from '../components/Steps'
+import { StreakLine, TrainingCalendar, WeekGoalCard } from '../components/training'
+import { ZoneWord } from '../components/Protein'
+import { bandOf, proteinZone } from '../lib/protein'
+import { weekReading, weekStatus } from '../lib/training'
 import { Big, DateTile, Delta, Rings, Spark, WeekStrip } from '../components/viz'
 
 const LOGGED = new Set(['feito', 'parcial', 'faltou'])
@@ -47,14 +50,16 @@ export function Hoje() {
   const strengthToday = active.data ? undefined
     : items.find((i) => i.active && i.modality === 'musculacao' && i.template_id && i.session_status !== 'faltou' && (!hero || key(i) !== key(hero)))
 
-  // desktop: agora + evolução, resumo (quando há) na largura toda, dia + semana (ordem do celular intacta)
+  // desktop (lg): agora + evolução, resumo na largura toda, dia + semana. Telas largas (wide, ≥ 1400 px):
+  // agora · evolução · dia na 1ª linha; calendário (2 colunas) + semana e meta semanal embaixo.
+  // A ordem do celular (DOM) fica intacta; no wide só `order` muda.
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-5">
-      <header className="flex items-center justify-between gap-3 pt-1 lg:col-span-2">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-5 wide:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
+      <header className="flex items-center justify-between gap-3 pt-1 lg:col-span-2 wide:col-span-3">
         <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">
           {capitalize(wdShort(todayIso))}, <span className="text-muted">{dMon(todayIso)}</span>
         </h1>
-        <div className="-mr-2 flex shrink-0 items-center">
+        <div className="-mr-2 flex shrink-0 items-center lg:hidden">
           <IconButton label={unread ? `Notas do assistente (${unread} novas)` : 'Notas do assistente'} onClick={() => go('notas')}>
             <NotebookText size={24} />
             {unread > 0 && <span className="absolute top-2 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full action-fill px-1 text-[11px] font-bold" aria-hidden="true">{unread}</span>}
@@ -63,7 +68,7 @@ export function Hoje() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-4 lg:gap-5 lg:[&>*:last-child]:flex-1">
+      <div className="flex flex-col gap-4 lg:gap-5 lg:[&>*:last-child]:flex-1 wide:order-1">
       {today.isError ? (
         <ErrorState what="o seu dia" message={(today.error as Error).message} onRetry={() => today.refetch()} />
       ) : today.isPending || active.isPending ? (
@@ -79,10 +84,14 @@ export function Hoje() {
       {strengthToday && <FichaHojeCard item={strengthToday} onFicha={() => openFicha(strengthToday.template_id)} />}
       </div>
 
-      <div className="flex flex-col lg:[&>*]:flex-1"><EvolucaoCard /></div>
-      <div className="empty:hidden lg:col-span-2"><SummaryCard /></div>
-      <DiaCard />
-      <SemanaCard items={items} now={now} heroKey={hero ? key(hero) : null} next={next} />
+      <div className="flex flex-col lg:[&>*]:flex-1 wide:order-2"><EvolucaoCard /></div>
+      <div className="empty:hidden lg:col-span-2 wide:order-4 wide:col-span-3"><SummaryCard /></div>
+      <div className="flex flex-col lg:[&>*]:flex-1 wide:order-3"><DiaCard /></div>
+      <div className="flex flex-col gap-5 lg:[&>*:first-child]:flex-1 wide:order-6 wide:[&>*:first-child]:flex-none">
+        <SemanaCard items={items} now={now} heroKey={hero ? key(hero) : null} next={next} />
+        <div className="hidden wide:flex wide:flex-1 wide:flex-col wide:[&>*]:flex-1"><WeekGoalCard nWeeks={6} fill /></div>
+      </div>
+      <div className="hidden wide:order-5 wide:col-span-2 wide:flex wide:flex-col wide:[&>*]:flex-1"><TrainingCalendar /></div>
       <FichaSheet template={ficha} onClose={() => setFicha(null)} />
     </div>
   )
@@ -364,39 +373,43 @@ function KcalTargetsLine({ k, kcal }: { k: KcalTargets; kcal: number }) {
 
 function DiaCard() {
   const daily = useDailyNutrition()
-  const targets = useNutritionTargets()
-  const streaks = useStreaks()
-  const toggle = useToggleCreatine()
+  const goal = useWeekGoal()
+  const protein = useProteinTarget()
   const steps = useDailySteps(2)
   const kt = useKcalTargets()
   const date = todaySP()
-  if (daily.isPending || targets.isPending || streaks.isPending || kt.isPending) return <Skeleton className="h-52" />
+  if (daily.isPending || goal.isPending || protein.isPending || kt.isPending) return <Skeleton className="h-52" />
   const d = daily.data?.find((x) => x.date === date)
-  const t = targets.data
   // meta de hoje (lib/kcal.ts): com o treino que falta, se houver; senão só o exercício já registrado
   const k = kt.data
   const ideal = mainTarget(k)
-  const total = (streaks.data ?? []).find((s) => s.modality === 'total')
+  const w = goal.week
   const kcal = d?.kcal ?? 0
   const p = d?.protein_g ?? 0
-  const creatine = d?.creatine ?? false
-  const done = total?.this_week_done ?? 0
-  const planned = total?.this_week_planned ?? 0
+  const band = bandOf(protein.data)
+  const zone = band ? proteinZone(p, band) : null
+  const done = w?.done ?? 0
+  const gmin = w?.goal_min ?? 4
+  const gmax = w?.goal_max ?? 9
+  const wst = weekStatus(done, gmin, gmax)
   const kcalPct = pctOf(kcal, ideal)
 
-  const rows: { label: string; value: string; of: string; pct?: number | null; color: string; to: string }[] = [
-    { label: 'Treinos na semana', value: `${done}`, of: `/${planned}`, color: 'var(--color-lime)', to: 'agenda' },
-    { label: 'Calorias', value: intFmt(kcal), of: ideal ? `/${intFmt(ideal)}` : ' kcal', pct: kcalPct, color: 'var(--color-kcal)', to: 'nutricao' },
-    { label: 'Proteína', value: intFmt(p), of: t?.protein_min_g ? `/${t.protein_min_g} g` : ' g', color: 'var(--color-protein)', to: 'nutricao' },
+  const rows: { label: string; value: string; of: React.ReactNode; color: string; to: string }[] = [
+    { label: 'Treinos na semana', value: `${done}`, color: 'var(--color-lime)', to: 'treino',
+      of: <><span>/{gmin}</span><span className={`ml-1.5 text-[13px] font-semibold ${wst === 'na_faixa' ? 'text-ok' : wst === 'acima' ? 'text-warn' : 'text-muted'}`}>faixa {gmin}–{gmax}</span></> },
+    { label: 'Calorias', value: intFmt(kcal), color: 'var(--color-kcal)', to: 'nutricao',
+      of: <>{ideal ? `/${intFmt(ideal)}` : ' kcal'}{kcalPct != null && <span className="ml-1.5 text-[13px] font-semibold text-muted">{kcalPct}%</span>}</> },
+    { label: 'Proteína', value: intFmt(p), color: 'var(--color-protein)', to: 'nutricao',
+      of: <><span className="ml-0.5">g</span>{zone && <ZoneWord zone={zone} className="ml-1.5" />}</> },
   ]
 
   return (
     <Card aria-label="Semana e nutrição de hoje">
       <div className="flex items-center gap-5">
         <Rings size={136} stroke={13} gap={4} rings={[
-          { value: done, target: planned || null, color: 'var(--color-lime)', label: `Treinos: ${done} de ${planned}` },
+          { value: done, target: gmin, color: 'var(--color-lime)', label: `Treinos na semana: ${done} de ${gmin} (faixa ${gmin} a ${gmax}); ${weekReading(done, gmin, gmax, true)}` },
           { value: kcal, target: ideal, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${ideal ? ` de ${intFmt(ideal)} ideais (${kcalPct}%)` : ''}` },
-          { value: p, target: t?.protein_min_g ?? null, color: 'var(--color-protein)', label: `Proteína: ${intFmt(p)} g${t?.protein_min_g ? ` de ${t.protein_min_g} g` : ''}` },
+          { value: p, target: band?.ideal ?? null, color: 'var(--color-protein)', label: `Proteína: ${intFmt(p)} g${band ? `; ideal a partir de ${band.ideal} g` : ''}` },
         ]} />
         <ul className="min-w-0 flex-1 divide-y divide-line">
           {rows.map((r) => (
@@ -405,8 +418,7 @@ function DiaCard() {
                 <span className="flex items-center gap-1.5 text-[13px] text-muted">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} aria-hidden="true" />{r.label}
                 </span>
-                <span className="text-[22px] font-bold leading-tight tabular-nums">{r.value}<span className="text-[15px] font-medium text-muted">{r.of}</span>
-                  {r.pct != null && <span className="ml-1.5 text-[13px] font-semibold text-muted">{r.pct}%</span>}</span>
+                <span className="flex flex-wrap items-baseline text-[22px] font-bold leading-tight tabular-nums">{r.value}<span className="text-[15px] font-medium text-muted">{r.of}</span></span>
               </button>
             </li>
           ))}
@@ -423,12 +435,6 @@ function DiaCard() {
           </button>
         )
       })()}
-      <div className="mt-4">
-        <CreatineButton on={creatine} onToggle={() => {
-          haptic(15)
-          toggle.mutate({ date, value: !creatine }, { onError: () => toast('Não salvou a creatina. Tente de novo.', { tone: 'err' }) })
-        }} />
-      </div>
     </Card>
   )
 }
@@ -436,13 +442,13 @@ function DiaCard() {
 // ---------------------------------------------------------------- Semana + o resto do dia
 function SemanaCard({ items, now, heroKey, next }: { items: PlanItem[]; now: number; heroKey: string | null; next?: PlanItem }) {
   const week = useWeek()
-  const streaks = useStreaks()
+  const goal = useWeekGoal()
   const mark = useMarkSession()
   const del = useDeleteSession()
   const today = todaySP()
   if (week.isPending) return <Skeleton className="h-44" />
   const days = weekDays(weekStart(today), week.data ?? [], today)
-  const total = (streaks.data ?? []).find((s) => s.modality === 'total')
+  const streak = goal.week?.streak_weeks ?? 0
   const rest = items.filter((i) => key(i) !== heroKey)
 
   async function onMark(item: PlanItem, status: 'feito' | 'faltou') {
@@ -461,12 +467,7 @@ function SemanaCard({ items, now, heroKey, next }: { items: PlanItem[]; now: num
     <Card aria-labelledby="sem-title">
       <div className="flex items-center justify-between gap-3">
         <h2 id="sem-title" className="text-lg font-semibold">Semana</h2>
-        {total && total.current_streak_weeks > 0 && (
-          <span className="inline-flex items-center gap-1 text-[15px] font-semibold tabular-nums">
-            <Flame size={18} className="text-kcal" aria-hidden="true" />{total.current_streak_weeks}
-            <span className="font-normal text-muted">{total.current_streak_weeks === 1 ? 'semana seguida' : 'semanas seguidas'}</span>
-          </span>
-        )}
+        <StreakLine n={streak} compact className="min-w-0" />
       </div>
       <div className="-mx-2 mt-3"><WeekStrip days={days} onPick={() => go('agenda')} /></div>
 

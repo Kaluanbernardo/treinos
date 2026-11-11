@@ -10,6 +10,7 @@ import { Big, Delta, Meter } from '../components/viz'
 import { READING_TONE, Triad } from '../components/Triad'
 import { Bars, TrendChart } from '../components/charts'
 import { EvolucaoV2Blocks } from './EvolucaoV2'
+import { useMedia } from '../lib/media'
 
 export type Period = '4s' | '3m' | 'tudo'
 export const cutoffFor = (p: Period) => (p === '4s' ? addDays(todaySP(), -27) : p === '3m' ? addDays(todaySP(), -90) : '0000-01-01')
@@ -103,6 +104,7 @@ function CorpoBlock({ period }: { period: Period }) {
   const body = useBodyMetrics()
   const [measure, setMeasure] = useState<MetricKey>('cintura_cm')
   const cut = cutoffFor(period)
+  const desk = useMedia('(min-width: 1024px)')   // desktop: gráficos mais altos (a coluna tem espaço)
 
   if (trend.isPending || body.isPending) return <Skeleton className="h-96" />
   if (trend.isError || body.isError) return <ErrorState what="as medidas" onRetry={() => { trend.refetch(); body.refetch() }} />
@@ -131,7 +133,7 @@ function CorpoBlock({ period }: { period: Period }) {
           <PaceLine pace4={last.pace_pct_week_28d} pace1={last.pace_pct_week} cap={last.max_loss_pct_week} />
           <div className="mt-3">
             {pts.length >= 2 ? (
-              <TrendChart ariaLabel="Peso diário e média de 7 dias" color="var(--color-lime)" unit="kg"
+              <TrendChart ariaLabel="Peso diário e média de 7 dias" color="var(--color-lime)" unit="kg" height={desk ? 280 : 200}
                 data={pts.map((p) => ({ date: p.date, value: p.peso_kg, avg: p.avg_7d }))} valueName="Pesagem" />
             ) : <p className="text-sm text-muted">Sem pesagens neste período.</p>}
           </div>
@@ -153,7 +155,7 @@ function CorpoBlock({ period }: { period: Period }) {
             )
           })}
         </div>
-        <MeasureView rows={body.data!} m={m} cut={cut} />
+        <MeasureView rows={body.data!} m={m} cut={cut} height={desk ? 240 : 170} />
       </div>
     </Block>
   )
@@ -177,7 +179,7 @@ function PaceLine({ pace4, pace1, cap }: { pace4: number | null; pace1: number |
   )
 }
 
-function MeasureView({ rows, m, cut }: { rows: BodyMetric[]; m: (typeof MEASURES)[number]; cut: string }) {
+function MeasureView({ rows, m, cut, height }: { rows: BodyMetric[]; m: (typeof MEASURES)[number]; cut: string; height: number }) {
   const series = rows.filter((b) => b[m.key] != null).map((b) => ({ date: b.date, value: Number(b[m.key]) }))
   if (series.length < 2) {
     const hint = m.key === 'cintura_cm'
@@ -208,7 +210,7 @@ function MeasureView({ rows, m, cut }: { rows: BodyMetric[]; m: (typeof MEASURES
       </div>
       <div className="mt-2">
         {inPeriod.length >= 2
-          ? <TrendChart ariaLabel={`${m.label} ao longo do tempo`} color={m.key === 'gordura_pct' ? 'var(--color-fat)' : 'var(--color-fg)'} unit={m.unit} line="value" dots={false} data={inPeriod} valueName={m.label} height={170} />
+          ? <TrendChart ariaLabel={`${m.label} ao longo do tempo`} color={m.key === 'gordura_pct' ? 'var(--color-fat)' : 'var(--color-fg)'} unit={m.unit} line="value" dots={false} data={inPeriod} valueName={m.label} height={height} />
           : <p className="text-sm text-muted">Menos de 2 medidas neste período.</p>}
       </div>
     </div>
@@ -237,6 +239,7 @@ function ForcaBlock({ period }: { period: Period }) {
   const prs = usePrs()
   const [sel, setSel] = useState<string | null>(null)
   const cut = cutoffFor(period)
+  const desk = useMedia('(min-width: 1024px)')
 
   const exercises = useMemo(() => {
     const map = new Map<string, { id: string; name: string; main: boolean; n: number; last: string; loaded: boolean }>()
@@ -304,11 +307,11 @@ function ForcaBlock({ period }: { period: Period }) {
       ) : (
         <>
           <h3 className="mt-5 text-sm font-medium text-muted">1RM estimado por sessão</h3>
-          <TrendChart ariaLabel={`1RM estimado de ${cur.name}`} color="var(--color-lime)" unit="kg" line="value" dots={false} height={180}
+          <TrendChart ariaLabel={`1RM estimado de ${cur.name}`} color="var(--color-lime)" unit="kg" line="value" dots={false} height={desk ? 240 : 180}
             data={inPeriod.filter((r) => r.top_e1rm != null).map((r) => ({ date: r.date, value: r.top_e1rm, label: r.top_kg ? `melhor série ${kgFmt(r.top_kg)} kg × ${r.top_reps}` : undefined }))}
             valueName="1RM est." />
           <h3 className="mt-4 text-sm font-medium text-muted">Volume por sessão (kg)</h3>
-          <Bars ariaLabel={`Volume por sessão de ${cur.name}`} color="var(--color-muted)" unit="kg" height={130}
+          <Bars ariaLabel={`Volume por sessão de ${cur.name}`} color="var(--color-muted)" unit="kg" height={desk ? 170 : 130}
             data={inPeriod.map((r) => ({ key: r.session_id, label: dm(r.date), value: Number(r.volume_kg), sub: `${r.n_sets} séries${r.is_volume_pr ? ' · recorde de volume' : ''}` }))} />
         </>
       )}

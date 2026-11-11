@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { supabase } from './supabase'
 import { addDays, todaySP } from './format'
 import { pickPlanLink, type SessionLinkHint } from './planLink'
+import { GOAL_DEFAULT, trainingWeeksFrom } from './training'
+import { proteinTargetFrom } from './protein'
 import type {
   BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MealPhoto, MonthlySummary, MuscleVolumeWeek,
-  NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, Recomposition,
-  SessionRow, SessionStatus, SetLog, Streak, Template, WeightPoint,
+  NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, ProteinTarget, Recomposition,
+  SessionRow, SessionStatus, SetLog, Streak, Template, TrainingWeek, WeightPoint,
 } from './types'
 
 function db() {
@@ -64,6 +66,49 @@ export const useSessions = (limit = 30) =>
         db().from('v_sessions').select('*').order('date', { ascending: false }).order('started_at', { ascending: false, nullsFirst: false }).limit(limit),
       ),
   })
+
+/** Todas as sessões (só as colunas da contagem por ficha e do mapa de calor). Uma pessoa: poucas centenas de linhas. */
+export const useAllSessions = () =>
+  useQuery({
+    queryKey: ['v_sessions', 'all'],
+    queryFn: () =>
+      rows<SessionRow>(db().from('v_sessions').select('id, date, status, title, modality, template_id, started_at').order('date')),
+  })
+
+/**
+ * View nova que ainda não chegou no banco (migração não aplicada): o PostgREST responde PGRST205
+ * "Could not find the table ... in the schema cache". Só nesse caso o app calcula a mesma regra no cliente.
+ */
+const missingView = (e: unknown) => /PGRST205|Could not find the (table|relation)|does not exist/i.test(String((e as Error)?.message ?? e))
+
+/** goals como objeto livre: colunas novas podem não existir ainda (migração pendente). */
+const goalsRow = () => one<Record<string, unknown>>(db().from('goals').select('*').limit(1))
+const numOr = (v: unknown, d: number) => (v == null || v === '' || Number.isNaN(Number(v)) ? d : Number(v))
+
+/** Meta semanal (v_training_weeks): 1 linha por semana, a última é a atual. */
+export const useTrainingWeeks = () =>
+  useQuery({
+    queryKey: ['v_training_weeks'],
+    queryFn: async () => {
+      try {
+        return await rows<TrainingWeek>(db().from('v_training_weeks').select('*').order('week_start'))
+      } catch (e) {
+        if (!missingView(e)) throw e
+        const [sessions, g] = await Promise.all([
+          rows<Pick<SessionRow, 'date' | 'status' | 'modality'>>(db().from('sessions').select('date, status, modality').order('date')),
+          goalsRow(),
+        ])
+        return trainingWeeksFrom(sessions, { min: numOr(g?.weekly_sessions_min, GOAL_DEFAULT.min), max: numOr(g?.weekly_sessions_max, GOAL_DEFAULT.max) }, todaySP())
+      }
+    },
+  })
+
+/** Semana atual da meta (última linha de v_training_weeks). */
+export function useWeekGoal() {
+  const q = useTrainingWeeks()
+  const cur = q.data?.find((w) => w.is_current) ?? q.data?.[q.data.length - 1] ?? null
+  return { ...q, week: cur }
+}
 
 export const useActiveSession = () =>
   useQuery({
@@ -159,7 +204,8 @@ export function useSkipExercise() {
 /** Invalida tudo que depende de sessões/séries (Hoje, Agenda, Evolução, gasto estimado em Calorias). */
 export function invalidateTraining(qc: QueryClient) {
   for (const k of ['v_today', 'v_week', 'plan', 'v_sessions', 'active_session', 'session', 'v_e1rm_session',
-    'v_prs', 'v_streaks', 'v_weekly_summary', 'v_monthly_summary', 'v_recomposition', 'muscle_volume', 'session_exercises', 'session_prs', 'v_energy_daily'])
+    'v_prs', 'v_streaks', 'v_weekly_summary', 'v_monthly_summary', 'v_recomposition', 'muscle_volume', 'session_exercises', 'session_prs', 'v_energy_daily',
+    'v_training_weeks'])
     qc.invalidateQueries({ queryKey: [k] })
 }
 
@@ -465,6 +511,31 @@ export const useNutritionTargets = () =>
     queryFn: () => one<NutritionTargets>(db().from('v_nutrition_targets').select('*')),
   })
 
+/** Faixa de proteína do dia (v_protein_target; regra em docs/proteina.md). */
+export const useProteinTarget = () =>
+  useQuery({
+    queryKey: ['v_protein_target'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      try {
+        return await one<ProteinTarget>(db().from('v_protein_target').select('*'))
+      } catch (e) {
+        if (!missingView(e)) throw e
+        const [w, pf, g] = await Promise.all([
+          one<{ date: string; peso_kg: number }>(db().from('body_metrics').select('date, peso_kg').not('peso_kg', 'is', null).order('date', { ascending: false }).limit(1)),
+          one<{ height_cm: number | null }>(db().from('profile').select('height_cm').limit(1)),
+          goalsRow(),
+        ])
+        return proteinTargetFrom({
+          weightKg: w?.peso_kg ?? null, weightDate: w?.date ?? null, heightCm: pf?.height_cm ?? null,
+          pesoRefKg: g?.peso_ref_kg == null ? null : Number(g.peso_ref_kg),
+          gPerKg: { min: g?.protein_min_g_per_kg as number | null, ideal: g?.protein_ideal_g_per_kg as number | null, cap: g?.protein_cap_g_per_kg as number | null },
+          bmiMax: g && 'protein_ref_bmi_max' in g ? (g.protein_ref_bmi_max == null ? null : Number(g.protein_ref_bmi_max)) : undefined,
+        })
+      }
+    },
+  })
+
 export const useFoodLogs = (date: string) =>
   useQuery({
     queryKey: ['food_logs', date],
@@ -477,33 +548,6 @@ export const useMealPhotos = (date: string) =>
     queryFn: () => rows<MealPhoto>(db().from('meal_photos').select('*').eq('date', date).order('created_at')),
   })
 
-export function useToggleCreatine() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ date, value }: { date: string; value: boolean }) => {
-      const { error } = await db().from('daily_checks')
-        .upsert({ date, creatine: value, source: 'app' }, { onConflict: 'date' })
-      if (error) throw new Error(error.message)
-    },
-    onMutate: async ({ date, value }) => {
-      await qc.cancelQueries({ queryKey: ['v_daily_nutrition'] })
-      const prev = qc.getQueryData<DailyNutrition[]>(['v_daily_nutrition'])
-      qc.setQueryData<DailyNutrition[]>(['v_daily_nutrition'], (old = []) => {
-        const hit = old.some((d) => d.date === date)
-        return hit
-          ? old.map((d) => (d.date === date ? { ...d, creatine: value } : d))
-          : [...old, { date, kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: value, creatine_g: null, water_ml: null }]
-      })
-      return { prev }
-    },
-    onError: (_e, _v, ctx) => qc.setQueryData(['v_daily_nutrition'], ctx?.prev),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['v_daily_nutrition'] })
-      qc.invalidateQueries({ queryKey: ['v_weekly_summary'] })
-    },
-  })
-}
-
 // ---------------------------------------------------------------- calorias
 /** Últimos `days` dias de v_energy_daily (basal + dia a dia + exercício × comida). */
 export const useEnergyDaily = (days = 60) =>
@@ -514,9 +558,10 @@ export const useEnergyDaily = (days = 60) =>
   })
 
 /** v_energy_daily de um intervalo fechado de datas (semana ou mês, inclusive os anteriores à janela de 60 dias). */
-export const useEnergyRange = (from: string, to: string) =>
+export const useEnergyRange = (from: string, to: string, enabled = true) =>
   useQuery({
     queryKey: ['v_energy_daily', 'range', from, to],
+    enabled,
     queryFn: () =>
       rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', from).lte('date', to).order('date')),
   })
@@ -547,6 +592,7 @@ export function useSaveProfile() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['profile'] })
       qc.invalidateQueries({ queryKey: ['v_energy_daily'] })
+      qc.invalidateQueries({ queryKey: ['v_protein_target'] })
     },
   })
 }

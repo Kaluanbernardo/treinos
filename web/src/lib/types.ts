@@ -131,6 +131,47 @@ export interface SessionRow {
   n_prs: number
   /** exercícios pulados (migração 20261028180000; ausente antes dela) */
   n_skipped?: number
+  /** item do plano de origem (migração 20261111120000): adicionado = remarcado/extra; null = fora do plano */
+  plan_kind?: 'base' | 'substituido' | 'adicionado' | null
+  plan_motivo?: string | null
+}
+
+/** v_training_weeks: 1 linha por semana (seg–dom). done = feito + parcial, qualquer modalidade. */
+export interface TrainingWeek {
+  week_start: string
+  week_end: string
+  is_current: boolean
+  done: number
+  n_feito: number
+  n_parcial: number
+  missed: number
+  planned: number
+  by_modality: Partial<Record<Modality, number>>
+  goal_min: number
+  goal_max: number
+  met: boolean
+  status: 'abaixo' | 'na_faixa' | 'acima'
+  to_min: number
+  streak_weeks: number
+  best_streak_weeks: number
+}
+
+/** v_protein_target: faixa de proteína do dia (regra em docs/proteina.md). */
+export interface ProteinTarget {
+  weight_kg: number | null
+  weight_date: string | null
+  height_cm: number | null
+  bmi: number | null
+  bmi_cap_kg: number | null
+  ref_bmi_max: number | null
+  ref_weight_kg: number | null
+  ref_basis: 'peso' | 'teto_imc' | 'sem_peso'
+  min_g_per_kg: number
+  ideal_g_per_kg: number
+  cap_g_per_kg: number
+  min_g: number | null
+  ideal_g: number | null
+  cap_g: number | null
 }
 
 /** session_exercise_status: estado por exercício dentro da sessão (sem linha = não pulado). */

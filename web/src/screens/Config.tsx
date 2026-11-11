@@ -14,7 +14,7 @@ declare const __BUILD_SHA__: string
 declare const __BUILD_DATE__: string
 
 const TABLE_LABEL: Record<string, string> = {
-  sessions: 'sessão', set_logs: 'série', body_metrics: 'peso/medida', food_logs: 'refeição', bot_notes: 'nota', daily_checks: 'creatina/água',
+  sessions: 'sessão', set_logs: 'série', body_metrics: 'peso/medida', food_logs: 'refeição', bot_notes: 'nota', daily_checks: 'água/passos',
 }
 
 export function Config({ email }: { email: string }) {
@@ -69,7 +69,7 @@ export function Config({ email }: { email: string }) {
 
       <p className="px-1 text-sm leading-relaxed text-muted">
         App pessoal do Kaluan. Peso, medidas, refeições, fotos e remarcações entram pelo chat com o assistente; aqui ficam
-        os registros de treino, a creatina e o perfil do basal. Horários em America/São Paulo.
+        os registros de treino e o perfil do basal. Horários em America/São Paulo.
       </p>
     </div>
   )

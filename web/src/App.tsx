@@ -36,7 +36,7 @@ export default function App() {
   if (!session) return <Login />
 
   const fullscreen = route.name === 'sessao'
-  const NAV: string[] = ['hoje', 'treino', 'evolucao', 'nutricao', 'calorias', 'agenda', 'config']
+  const NAV: string[] = ['hoje', 'treino', 'evolucao', 'nutricao', 'calorias', 'agenda', 'notas', 'config']
   const active: NavId | null = NAV.includes(route.name) ? (route.name as NavId) : null
 
   return (
