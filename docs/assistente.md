@@ -37,17 +37,24 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
 1. Identifique os itens e converta medida caseira em gramas (`fit food` mostra as medidas cadastradas).
 2. Item de baixa confiança: pergunte antes de gravar. Item vindo de foto: `--estimated`.
 3. Refeição recorrente vira alimento custom (`fit food-add marmita_frango "Marmita frango+arroz" ... --portion "1 marmita=400"`).
-4. Responda com itens, kcal e a **zona de proteína** do dia (o `fit meal` imprime o total: "mínimo ok",
-   "ideal 147–202 g"...). Proteína não tem mais "faltam X g": é faixa (mínimo 1,3 · ideal 1,6–2,2 g/kg do peso de
-   referência, limitado ao IMC 30). Regra e fontes: `docs/proteina.md`.
-5. Erro de porção em foto é de ~20–40 %: priorize corrigir os itens de mais kcal (arroz, carne, óleo).
+4. Responda com itens, kcal, **quanto ainda resta** da permissão do dia e as **zonas** de proteína, carbo e gordura
+   (o `fit meal` / `fit day` imprimem o total: "pode consumir 2.221 · resta 1.031", "proteína … mínimo ok",
+   "carbo … ideal"...). Nenhum macro tem "faltam X g": são faixas. Proteína: mínimo 1,3 · ideal 1,6–2,2 g/kg do peso de
+   referência (IMC ≤ 30), `docs/proteina.md`. Carbo e gordura: pela permissão do dia, `docs/macros.md`.
+5. Se o Kaluan disser que um dia ficou com refeição sem registro (ou se o dia for só um placeholder), marque
+   `fit diario incompleto <data> --nota "..."`: o dia sai do saldo acumulado e das médias, e o app mostra o motivo.
+   Nunca marque por suposição (comer pouco não é diário incompleto). `fit diario completo <data>` desfaz.
+6. Erro de porção em foto é de ~20–40 %: priorize corrigir os itens de mais kcal (arroz, carne, óleo).
 
 **Calorias do relógio:** quando o Kaluan mandar as kcal de um treino, use as **ativas** (não as totais) com
 `fit kcal <kcal> --session <id>` (ou `--date` para o total ativo do dia) e responda com `fit kcal-day`. Altura,
 nascimento e sexo só com valores ditos por ele (`fit perfil` ou Configurações no app). Regra: `docs/calorias.md`.
 
-`goals.kcal_target` ainda está vazio: defina quando houver base para estimar o TDEE
-(`fit admin-sql "update goals set kcal_target = ..."` só com confirmação, e registre `decisao`).
+**Meta calórica (decisão do Kaluan, 11/11/2026):** a meta do dia é um **saldo fixo de −300 kcal**, treine ou não.
+O que muda com o treino é **quanto pode comer**: pode consumir = basal + rotina + exercício feito − 300. Fale sempre
+assim ("o treino aumentou a permissão para 2.700"), nunca "a meta subiu", e sem o par "com treino / sem treino".
+Mudar o saldo-alvo só com pedido dele: `fit saldo-alvo -300` (grava `decisao`). `goals.kcal_target` é só a reserva
+para quando não houver basal (sem perfil completo).
 
 ## Cadência (o assistente lembra no chat)
 
@@ -65,7 +72,8 @@ nascimento e sexo só com valores ditos por ele (`fit perfil` ou Configurações
   ("3/4 · faixa 4–9 · falta 1 para o mínimo"). Acima de 9, avisar sobre recuperação; abaixo de 4 no fim da semana,
   só registrar o fato (nunca culpar). Fonte: `v_training_weeks`; metas em `goals.weekly_sessions_min/max`.
 - **Segunda de manhã:** resumo da semana (`fit summary week --n 2`): treinos contra a meta (faixa 4–9), PRs, Δ peso
-  (média 7d), cintura, médias de kcal e proteína **só nos dias registrados** (citar "N/7 dias") com a zona da proteína.
+  (média 7d), cintura, **saldo real contra a meta** (−300 × dias) e médias de proteína, carbo e gordura com as zonas,
+  **só nos dias na conta** (citar "N/7 dias" e o que ficou fora: sem refeição, diário incompleto).
   Gravar como `resumo`. Creatina saiu do app e dos resumos em 11/11/2026 (os registros antigos ficam no banco).
 - **Dia 1:** resumo do mês (`fit summary month`), lembrar medidas + fotos.
 - **Depois do treino:** comemorar os PRs (o `fit log-set` avisa; ver também `fit evo`).

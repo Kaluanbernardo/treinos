@@ -22,8 +22,9 @@ A cor nunca vai sozinha: sempre com ícone e palavra. Não existe mais "faltam X
   Morton et al. (2018). Acima dele, o ganho extra médio é zero.
 - **Teto útil, 2,2 g/kg:** limite superior do IC 95 % desse platô (1,03–2,20). Comer mais **não faz mal**, só deixa
   de trazer ganho e ocupa kcal que poderiam ser carbo (treino) ou gordura. O ISSN fala em 1,4–2,0 g/kg para a maioria
-  e em 2,3–3,1 g/kg para quem treina força **em déficit grande**. Hoje o teto de kcal é o próprio gasto, sem déficit
-  fixo (`docs/calorias.md`); se um déficit agressivo voltar, rever o teto.
+  e em 2,3–3,1 g/kg para quem treina força **em déficit grande**. Desde 11/11/2026 a meta é um déficit fixo de
+  300 kcal/dia (`docs/calorias.md`), moderado (~12 % do gasto): o teto de 2,2 continua. Se o déficit ficar agressivo,
+  rever o teto.
 
 ## Peso de referência: peso da balança limitado ao IMC 30
 
@@ -49,6 +50,8 @@ limitar o peso de referência ao IMC 30: a gordura acima desse ponto é ignorada
 
 Faixa ideal: **147–202 g/dia**; abaixo de 119 g é "abaixo do mínimo". A diferença para o peso cheio hoje é pequena
 (92,5 kg daria 120 / 148 / 204 g). O limite pesa mais se o peso subir. A faixa se move sozinha com cada pesagem nova.
+
+Carbo e gordura seguem o mesmo modelo de zonas, pela permissão do dia: `docs/macros.md`.
 
 ## Onde mudar
 

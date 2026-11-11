@@ -37,8 +37,53 @@ comparar com a tendência de peso antes de mexer no número.
 
 ## Saldo = comida − gasto
 
-`balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. A meta
-(`target_balance_kcal`) é `−goals.deficit_kcal`, hoje **0**: o teto é o próprio gasto, sem déficit fixo.
+`balance_kcal` negativo = déficit. Só existe quando há basal **e** refeição registrada no dia. É o **saldo real**: zero
+é manutenção (comer exatamente o gasto).
+
+## Meta fixa e permissão (decisão do Kaluan, 11/11/2026)
+
+A meta do dia é **um saldo fixo**, treine ou não: **saldo-alvo = −300 kcal/dia** (déficit). Guardado em
+`goals.deficit_kcal = 300` e exposto como `v_energy_daily.target_balance_kcal = −300`. Muda sem código com
+`fit saldo-alvo <kcal>` (só a pedido do Kaluan; grava `decisao`). O seed reaplicado não mexe nesse valor.
+
+O que o treino muda é **quanto dá para comer**, não a meta:
+
+```
+pode consumir (permissão) = basal + rotina + exercício já feito + saldo-alvo      (= gasto − 300)
+ainda resta               = pode consumir − comida
+saldo contra a meta       = comida − permissão                                    (= saldo real + 300)
+```
+
+Fonte única: `v_day_targets` (migração `20261111200000_saldo_alvo_macros.sql`): `allowance_kcal`, `remaining_kcal`,
+`balance_vs_target_kcal`. Sem basal, a permissão cai em `goals.kcal_target` (meta fixa, sem treino somado). O app
+mostra **uma** meta (−300) mais "pode consumir hoje" e "ainda resta", e diz quanto o treino somou na permissão. Treino
+de hoje ainda por fazer não entra na conta: aparece só como aviso ("quando registrar, a permissão sobe ≈ 830 kcal",
+estimativa por MET). Não existe mais o par "com treino / sem treino".
+
+## Diário incompleto
+
+`daily_checks.diary_incomplete` marca o dia em que o diário alimentar ficou incompleto (refeição sem registro, ou dia
+placeholder como 05/11/2026). O assistente marca só com o que o Kaluan disser (`fit diario incompleto <data>`); o
+app nunca deduz por heurística (comer pouco não é diário incompleto). `v_day_targets.day_state` resume:
+`na_conta` · `hoje` · `incompleto` · `sem_refeicao` · `sem_basal`. **Só `na_conta` entra nas somas** (saldo da semana e
+do mês, saldo acumulado, médias dos resumos).
+
+## Saldo acumulado (app: Treino → Calendário → Kcal)
+
+O modo Kcal do calendário (antes um mapa de calor de kcal de exercício) virou um gráfico do **saldo real acumulado**.
+O mapa de calor de treinos não mudou. Conta em `web/src/lib/balance.ts` (`cumulativeBalance`):
+
+- **Linha real:** Σ (comida − gasto) dia a dia no período; o zero é manutenção. Trechos abaixo de zero em verde
+  (déficit acumulado), acima em âmbar (superávit acumulado).
+- **Linha da meta:** Σ saldo-alvo (−300) **nos mesmos dias** que entram no real: depois de N dias na conta, −300 × N.
+  Tracejada e neutra, com rótulo "meta".
+- **Barras:** o saldo real de cada dia (outro painel, mesma linha do tempo, escala própria).
+- **Períodos:** Semana (seg–dom) e Mês (do calendário), com setas para os anteriores; 90 dias e Tudo terminam hoje.
+- **Dias fora da conta** (hoje, diário incompleto, sem refeição, sem basal): **ficam de fora das duas linhas**, que
+  ficam paradas nesses dias; o dia ganha um anel vazio nas barras e aparece nomeado em "Fora da conta". Por quê:
+  somar um dia sem tudo registrado inventaria um déficit (o gasto inteiro contra parte da comida), e somar −300 na
+  meta por um dia sem dados cobraria uma meta que não dá para medir. Destacar e ainda assim somar levaria o número
+  principal a mentir.
 
 ## Saldo da semana e do mês (app: Nutrição → Semana / Mês)
 
@@ -46,13 +91,14 @@ Soma de `balance_kcal` no cliente, em `web/src/lib/balance.ts`, sem coluna nova 
 
 - **Semana:** segunda a domingo. **Mês:** do dia 1 ao último do calendário. "Hoje" é sempre `America/Sao_Paulo`;
   as setas voltam para períodos anteriores (leitura direta de `v_energy_daily` por intervalo de datas).
-- **Na conta:** só dia fechado com saldo. Comida, gasto e média por dia usam os mesmos dias, então
+- **Na conta:** só dia fechado com saldo e diário completo. Comida, gasto e média por dia usam os mesmos dias, então
   comida − gasto = saldo.
 - **Fora da conta, e nomeado na tela:**
   - **hoje:** basal do dia inteiro contra a comida até agora daria um déficit falso; aparece à parte como
     "até agora" e entra na soma quando o dia fechar;
   - **dia sem refeição:** o saldo é `NULL`; não vira zero nem déficit do gasto inteiro;
   - **dia com refeição, sem basal:** idem, com o motivo;
+  - **diário incompleto** (marcado no chat): fica fora, nomeado;
   - **dia futuro.**
 - "Déficit alto" no período compara a **média por dia** com o mesmo limite do dia (−600 kcal). O equivalente em kg
   usa 7700 kcal/kg, como a aba Calorias.
@@ -61,29 +107,30 @@ A aba Calorias ("Saldo diário") tem outra janela: últimos 7/30 dias corridos, 
 
 ## Meta de kcal de hoje (app: Hoje, Nutrição, Calorias)
 
-Conta no cliente, em `web/src/lib/kcal.ts` (`useKcalTargets()`), a partir de `v_energy_daily` e do plano do dia:
+Conta no cliente, em `web/src/lib/kcal.ts` (`useDayAllowance()`), a partir de `v_energy_daily` (linha de hoje) e do
+plano do dia, com a mesma regra de `v_day_targets`:
 
 ```
-base        = bmr_kcal + daily_life_kcal                      (linha de hoje)
-planejado   = Σ treinos de hoje ainda sem registro (nem feito/parcial nem faltou):
-              (MET − 1) × kg × min/60, mesma regra de v_energy_daily (min da grade/ficha, senão 60, teto 180);
-              sem peso: média de exercise_kcal dos dias com treino nos últimos 14 dias, por sessão
-sem treino  = base + exercise_kcal (já registrado hoje)
-com treino  = sem treino + planejado
+meta        = target_balance_kcal (−300), fixa
+pode consumir = bmr_kcal + daily_life_kcal + exercise_kcal (já registrado hoje) + target_balance_kcal
+ainda resta = pode consumir − comida de hoje
+aviso       = Σ treinos de hoje ainda sem registro: (MET − 1) × kg × min/60, mesma regra de v_energy_daily
+              (min da grade/ficha, senão 60, teto 180); sem peso: média de exercise_kcal dos últimos 14 dias
 ```
 
-O anel usa **com treino** enquanto houver treino pendente, senão **sem treino**. Não há déficit fixo nem ajuste
-pelos dias anteriores: o que passou não muda o teto de hoje. Sem basal cai na meta fixa `goals.kcal_target`, sem
-treino somado. Dias passados (Nutrição/Calorias) mostram o ideal real do dia: `out_kcal`.
+O anel de kcal usa a permissão. O que passou não muda a permissão de hoje (sem ajuste pelos dias anteriores). Dias
+passados (Nutrição/Calorias) mostram a permissão real do dia: `out_kcal − 300`.
 
-Na aba Calorias, um dia fechado com saldo abaixo de −600 kcal aparece como "déficit alto".
+Na aba Calorias, um dia fechado com saldo real abaixo de −600 kcal aparece como "déficit alto".
 
 ## Comandos
 
 ```bash
 scripts/fit kcal 347 --session efc6ec36      # kcal ativas de um treino (upsert)
 scripts/fit kcal 520 --date ontem            # total ativo do dia, sem sessão
-scripts/fit kcal-day [data]                  # quebra do dia
+scripts/fit kcal-day [data]                  # quebra do dia, meta, pode consumir e resta
+scripts/fit saldo-alvo [-300]                # mostra ou muda a meta fixa (só a pedido do Kaluan)
+scripts/fit diario incompleto ontem --nota "jantar sem registro"   # tira o dia das somas (completo desfaz)
 scripts/fit steps 8432 --date ontem          # passos do dia (só exibição)
 scripts/fit perfil --altura 178 --nascimento 1990-05-01 --sexo M   # só com dados ditos pelo Kaluan
 FIT_ROLLBACK=1 scripts/fit kcal 300 --date hoje                     # testa sem gravar

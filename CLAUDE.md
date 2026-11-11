@@ -70,12 +70,16 @@ All through `scripts/fit` (runs each statement as `set local role bot` over the 
 per call; refuses role/transaction escapes). `scripts/fit --help` lists every command. Main ones:
 `today`, `week`, `session` (fiz/faltei), `log-set`, `carga`, `move` / `skip` / `add` (schedule overrides),
 `body` (weight + measurements), `photo` (progress photos → private bucket), `food` (TBCA search, TACO fallback), `meal`,
-`kcal` / `kcal-day` / `perfil` (calorias, see `docs/calorias.md`), `note`, `notes`, `evo`, `summary`, `videos`, `sql "<select>"`. Autonomy rules and chat rituals are in
+`kcal` / `kcal-day` / `perfil` / `saldo-alvo` (calorias, see `docs/calorias.md`), `diario` (diário incompleto), `note`, `notes`,
+`evo`, `summary`, `videos`, `sql "<select>"`. Autonomy rules and chat rituals are in
 `docs/assistente.md`. Meaningful changes always get a `bot_notes` row (shown on the app's Notas screen).
 
 Main training metric: **weekly goal of 4–9 activities done** (any modality; `v_training_weeks`), not adherence to
 the schedule grid (the grid stays as a flexible plan). Protein is a **band with zones** (min 1.3 · ideal 1.6–2.2 g/kg
-of a reference weight capped at BMI 30; `v_protein_target`, rule and sources in `docs/proteina.md`). Creatine was
+of a reference weight capped at BMI 30; `v_protein_target`, rule and sources in `docs/proteina.md`); carb and fat use the
+same zones from the day's allowance (`v_day_targets`, `docs/macros.md`). Calorie target (2026-11-11): a **fixed saldo of
+−300 kcal/day**, training or not; training raises the allowance (basal + rotina + exercício − 300), not the target.
+Days marked `diario incompleto` stay out of every sum (cumulative balance chart, period balances, macro averages). Creatine was
 removed from the app and summaries on 2026-11-11 (historical data stays). Front-end tests: `cd web && npm test`.
 
 ## Design direction

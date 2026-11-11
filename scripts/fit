@@ -9,8 +9,10 @@ LEITURA
   fit today                                   plano de hoje (v_today) com status
   fit week [--next]                           meta semanal (N/4 · faixa 4–9) + semana atual (ou a próxima) com exceções e status
   fit evo                                     recomposição + peso + PRs recentes + meta semanal ("como estou indo?")
-  fit summary [week|month] [--n 2]            resumos: treinos vs meta semanal, PRs, kcal, proteína por zona, peso, cintura
-  fit day [data]                              meta semanal + refeições do dia + totais (proteína por zona, docs/proteina.md)
+  fit summary [week|month] [--n 2]            resumos: treinos vs meta semanal, PRs, saldo real vs meta (−300/dia), proteína,
+                                              carbo e gordura por zona (só dias na conta), peso, cintura
+  fit day [data]                              meta semanal + refeições do dia + totais: meta fixa, pode consumir, resta e
+                                              proteína / carbo / gordura por zona (docs/proteina.md, docs/macros.md)
   fit food <busca> [--limit 8]                busca custom > TBCA > TACO (sem acento, por similaridade; coluna fonte)
   fit notes [--limit 10]                      últimas notas do assistente
   fit sessions [--limit 10]                   últimas sessões (v_sessions)
@@ -51,13 +53,18 @@ NUTRIÇÃO
   fit portion <codigo> "<medida>" <gramas>              medida caseira (ex.: "1 colher de sopa" = 25 g)
   fit tbca "<termo ou código>" [--all] [--limit 10]     busca no site da TBCA, baixa o detalhe e cadastra em foods (fonte TBCA)
         um resultado (ou código exato): cadastra. Vários: lista; escolha com fit tbca <código> ou cadastre os listados com --all
+  fit diario incompleto|completo [data] [--nota t]      marca o diário do dia (incompleto = fora do saldo acumulado
+        e das médias; ex.: refeição que ficou sem registro, dia placeholder). Só com o que o Kaluan disser.
   fit water <ml> [--date d]                             água do dia
   fit steps <n> [--date d]                              passos do dia (só exibição; não mudam o gasto)
 
 CALORIAS (gasto × consumo; regra em docs/calorias.md)
+  Meta do dia = saldo-alvo FIXO (−300), treine ou não. Pode consumir = basal + rotina + exercício feito + saldo-alvo.
+  fit saldo-alvo [kcal]                                 mostra ou muda o saldo-alvo (ex.: -300). Só com pedido do Kaluan
   fit kcal <kcal> [--session <id>|--date d] [--note t]  kcal ATIVAS do relógio (source relogio); por sessão = upsert
   fit kcal-del <id>                                     apaga uma leitura do relógio
-  fit kcal-day [data]                                   basal + rotina + exercício × comida = saldo do dia
+  fit kcal-day [data]                                   basal + rotina + exercício × comida = saldo do dia, meta,
+                                                        pode consumir e resta
   fit perfil [--altura cm] [--nascimento AAAA-MM-DD] [--sexo M|F] [--fator 1.2]
         dados do basal (Mifflin-St Jeor); sem opções mostra o perfil. Só com valores informados pelo Kaluan.
 
@@ -299,6 +306,12 @@ def cmd_evo(a):
               "from v_training_weeks order by week_start desc limit 6"))
 
 
+def zone_sql(g, lo, mid, hi):
+    """Zona de um macro em SQL (mesma regra do app): abaixo < mín ≤ ok < ideal ≤ ideal ≤ teto < acima."""
+    return (f"case when {g} is null or {lo} is null or {mid} is null or {hi} is null then null when {g} < {lo} then 'abaixo' "
+            f"when {g} < {mid} then 'ok' when {g} <= {hi} then 'ideal' else 'acima' end")
+
+
 def cmd_summary(a):
     pos, o = opts(a, flags=("n",))
     unit = (pos[0] if pos else "week")
@@ -320,14 +333,31 @@ def cmd_summary(a):
         f"               when x.treinos / ((least(s.period_end, today_sp()) - s.period_start + 1) / 7.0) >= g.goal_min then 'média na faixa' "
         f"               else 'média abaixo do mínimo' end end as meta, "
         f"x.faltas, x.por_modalidade, s.n_prs, s.n_sets, round(s.volume_kg) as volume_kg, "
-        f"s.days_logged || '/' || s.days_in_period as dias_com_refeicao, s.kcal_avg, s.kcal_target, s.protein_avg_g, "
-        f"case when s.protein_avg_g is null or p.min_g is null then null when s.protein_avg_g < p.min_g then 'abaixo' "
-        f"     when s.protein_avg_g < p.ideal_g then 'ok' when s.protein_avg_g <= p.cap_g then 'ideal' else 'acima' end as proteina_zona, "
-        f"p.min_g || ' / ' || p.ideal_g || '–' || p.cap_g as proteina_min_ideal_g, "
+        # saldo e macros: só dias na conta (fechados, com refeição e basal, diário completo; v_day_targets), igual ao app
+        f"m.dias || '/' || s.days_in_period as dias_na_conta, m.fora as fora_da_conta, "
+        f"m.saldo_real, m.meta as meta_acumulada, m.saldo_real - m.meta as vs_meta, m.kcal_media, "
+        f"m.p as proteina_media_g, {zone_sql('m.p', 'm.p_min', 'm.p_ideal', 'm.p_cap')} as proteina_zona, "
+        f"m.p_min || ' / ' || m.p_ideal || '–' || m.p_cap as proteina_min_ideal_g, "
+        f"m.c as carbo_media_g, {zone_sql('m.c', 'm.c_floor', 'm.c_min', 'm.c_max')} as carbo_zona, "
+        f"m.c_floor || ' / ' || m.c_min || '–' || m.c_max as carbo_min_ideal_g, "
+        f"m.f as gordura_media_g, {zone_sql('m.f', 'm.f_floor', 'm.f_min', 'm.f_max')} as gordura_zona, "
+        f"m.f_floor || ' / ' || m.f_min || '–' || m.f_max as gordura_min_ideal_g, "
         f"s.weight_avg7_end, s.weight_delta_kg, s.waist_last_cm "
         f"from {view} s "
         f"cross join (select coalesce(max(goal_min), 4) as goal_min, coalesce(max(goal_max), 9) as goal_max from v_training_weeks where is_current) g "
-        f"cross join v_protein_target p "
+        f"cross join lateral (select count(*) filter (where t.day_state = 'na_conta')::int as dias, "
+        f"  nullif(concat_ws(', ', case when count(*) filter (where t.day_state = 'incompleto') > 0 then count(*) filter (where t.day_state = 'incompleto') || ' incompleto(s)' end, "
+        f"    case when count(*) filter (where t.day_state = 'sem_refeicao') > 0 then count(*) filter (where t.day_state = 'sem_refeicao') || ' sem refeição' end, "
+        f"    case when count(*) filter (where t.day_state = 'hoje') > 0 then 'hoje em andamento' end), '') as fora, "
+        f"  sum(t.balance_kcal) filter (where t.day_state = 'na_conta') as saldo_real, "
+        f"  sum(t.target_balance_kcal) filter (where t.day_state = 'na_conta') as meta, "
+        f"  round(avg(t.food_kcal) filter (where t.day_state = 'na_conta')) as kcal_media, "
+        + "".join(f"  round(avg(t.{c}) filter (where t.day_state = 'na_conta'), {d}) as {a}, " for c, a, d in (
+            ("protein_g", "p", 1), ("protein_min_g", "p_min", 0), ("protein_ideal_g", "p_ideal", 0), ("protein_cap_g", "p_cap", 0),
+            ("carb_g", "c", 1), ("carb_floor_g", "c_floor", 0), ("carb_min_g", "c_min", 0), ("carb_max_g", "c_max", 0),
+            ("fat_g", "f", 1), ("fat_floor_g", "f_floor", 0), ("fat_min_g", "f_min", 0)))
+        + f"  round(avg(t.fat_max_g) filter (where t.day_state = 'na_conta')) as f_max "
+        f"  from v_day_targets t where t.date between s.period_start and s.period_end) m "
         f"cross join lateral (select count(*) filter (where z.status in ('feito', 'parcial'))::int as treinos, "
         f"  count(*) filter (where z.status = 'faltou')::int as faltas, "
         f"  (select jsonb_object_agg(m.modality, m.n) from (select y.modality, count(*) as n from sessions y "
@@ -346,6 +376,17 @@ def cmd_day(a):
 
 
 PROTEIN_ZONE = {"abaixo": "abaixo do mínimo", "ok": "mínimo ok", "ideal": "ideal", "acima": "acima do teto útil"}
+MACRO_ZONE = {"abaixo": "abaixo do mínimo", "ok": "mínimo ok", "ideal": "ideal", "acima": "acima da faixa"}
+
+
+def kn(v):
+    """1234.4 → '1.234' (kcal/g inteiros, separador pt-BR)."""
+    return "–" if v is None else f"{round(float(v)):,}".replace(",", ".")
+
+
+def signed(v):
+    v = round(float(v))
+    return ("+" if v > 0 else "−" if v < 0 else "±") + kn(abs(v))
 
 
 def protein_zone(g, t):
@@ -360,25 +401,53 @@ def protein_zone(g, t):
 
 
 def totals(d):
-    r = bot(f"select coalesce(n.kcal,0) as kcal, coalesce(n.protein_g,0) as p, coalesce(n.carb_g,0) as c, coalesce(n.fat_g,0) as g, "
-            f"t.kcal_target, t.carb_target_g, t.fat_min_g, t.fat_max_g, "
-            f"pt.min_g, pt.ideal_g, pt.cap_g, pt.ref_weight_kg, pt.ref_basis "
-            f"from v_nutrition_targets t cross join v_protein_target pt left join v_daily_nutrition n on n.date = {lit(d)}")
+    """Total do dia por v_day_targets: meta fixa (saldo-alvo), pode consumir, resta e macros por zona (docs/macros.md)."""
+    r = bot(f"select * from v_day_targets where date = {lit(d)}")
     if not r:
+        n = bot(f"select coalesce(sum(kcal),0) as kcal from food_logs where date = {lit(d)}")
+        print(f"total {d}: {kn(n[0]['kcal'])} kcal (sem dados de gasto nesse dia)")
         return
-    r = {k: (float(v) if isinstance(v, str) and re.fullmatch(r"-?[\d.]+", v) else v) for k, v in r[0].items()}
-    def falta(have, target):
-        return f" (faltam {max(0, round(target - have))})" if target else ""
-    z = protein_zone(r["p"], r)
-    if z is None:
-        prot = f"proteína {round(r['p'])} g (faixa depois da 1ª pesagem)"
+    r = {k: (None if v == "" else v) for k, v in r[0].items()}   # FIT_PSQL devolve NULL como texto vazio
+    is_today = d == today().isoformat()
+    food, allow, tgt = nz(r["food_kcal"]), nz(r["allowance_kcal"]), nz(r["target_balance_kcal"])
+    head = f"total {d}: comida {kn(food)} kcal"
+    if allow is not None:
+        rem = allow - food
+        head += f" · pode consumir {kn(allow)} · {'resta' if rem >= 0 else 'passou'} {kn(abs(rem))}"
     else:
-        label = PROTEIN_ZONE[z] + (" até agora" if z == "abaixo" and d == today().isoformat() else "")
-        ref = f", ref. {r['ref_weight_kg']:g} kg{' (teto IMC 30)' if r['ref_basis'] == 'teto_imc' else ''}"
-        prot = (f"proteína {round(r['p'])} g · {label} (mínimo {round(r['min_g'])} · ideal {round(r['ideal_g'])}–"
-                f"{round(r['cap_g'])} g{ref})")
-    print(f"total {d}: {round(r['kcal'])} kcal{' / ' + str(round(r['kcal_target'])) if r['kcal_target'] else ''}{falta(r['kcal'], r['kcal_target'])} · "
-          f"{prot} · carbo {round(r['c'])} g · gordura {round(r['g'])} g")
+        head += " · sem permissão (falta o basal: fit perfil)"
+    print(head)
+    if tgt is not None:
+        print(f"  meta do dia: saldo {signed(tgt)} kcal, fixa (treinar aumenta a permissão, não a meta)")
+    if r["allowance_basis"] == "gasto":
+        ex = nz(r["exercise_kcal"]) or 0
+        parts = f"basal {kn(r['bmr_kcal'])} + rotina {kn(r['daily_life_kcal'])}" + (f" + treino {kn(ex)}" + (" (estimado)" if r["is_estimate"] in (True, "true", "t") else "") if ex else "")
+        print(f"  pode consumir = {parts}{f' {chr(8722) if tgt < 0 else chr(43)} {kn(abs(tgt))}' if tgt else ''}")
+    elif r["allowance_basis"] == "fixa":
+        print("  pode consumir = meta fixa goals.kcal_target (sem basal)")
+    if r["day_state"] == "incompleto":
+        print("  diário incompleto: o dia fica fora do saldo acumulado e das médias")
+    def zone_txt(z, labels):
+        if not z:
+            return None
+        return labels[z] + (" até agora" if z == "abaixo" and is_today else "")
+    g = {k: nz(r[k]) or 0 for k in ("protein_g", "carb_g", "fat_g")}
+    pz = zone_txt(r["protein_zone"], PROTEIN_ZONE)
+    if r["protein_min_g"] is None:
+        print(f"  proteína {kn(g['protein_g'])} g (faixa depois da 1ª pesagem)")
+    else:
+        ref = f", ref. {nz(r['ref_weight_kg']):g} kg" if r.get("ref_weight_kg") is not None else ""
+        print(f"  proteína {kn(g['protein_g'])} g{f' · {pz}' if pz else ''} (mínimo {kn(r['protein_min_g'])} · ideal {kn(r['protein_ideal_g'])}–{kn(r['protein_cap_g'])} g{ref})")
+    cz = zone_txt(r["carb_zone"], MACRO_ZONE)
+    if r["carb_min_g"] is None:
+        print(f"  carbo {kn(g['carb_g'])} g (faixa quando houver permissão do dia e peso)")
+    else:
+        print(f"  carbo {kn(g['carb_g'])} g{f' · {cz}' if cz else ''} (mínimo {kn(r['carb_floor_g'])} · ideal {kn(r['carb_min_g'])}–{kn(r['carb_max_g'])} g: o que sobra da permissão)")
+    fz = zone_txt(r["fat_zone"], MACRO_ZONE)
+    if r["fat_min_g"] is None:
+        print(f"  gordura {kn(g['fat_g'])} g (faixa quando houver permissão do dia)")
+    else:
+        print(f"  gordura {kn(g['fat_g'])} g{f' · {fz}' if fz else ''} (mínimo {kn(r['fat_floor_g'])} · ideal {kn(r['fat_min_g'])}–{kn(r['fat_max_g'])} g = 20–35 % da permissão)")
 
 
 def cmd_food(a):
@@ -1047,9 +1116,22 @@ def cmd_kcal_day(a):
     print(f"comida       {n(r['food_kcal'])} kcal" + ("" if r["food_logged"] else "  (nada registrado)") + ("  (tem estimativa)" if r["food_has_estimated"] else ""))
     if r["balance_kcal"] is not None:
         b = int(r["balance_kcal"])
-        print(f"saldo        {'+' if b > 0 else ''}{n(b)} kcal  ({'déficit' if b < 0 else 'superávit' if b > 0 else 'empate'}; meta {r['target_balance_kcal']})")
+        print(f"saldo real   {signed(b)} kcal  ({'déficit' if b < 0 else 'superávit' if b > 0 else 'empate'}; zero = manutenção)")
     else:
-        print("saldo        –   (" + ("sem basal" if r["bmr_kcal"] is None else "sem refeições no dia") + ")")
+        print("saldo real   –   (" + ("sem basal" if r["bmr_kcal"] is None else "sem refeições no dia") + ")")
+    t = bot(f"select target_balance_kcal, allowance_kcal, remaining_kcal, day_state from v_day_targets where date = {lit(d)}")
+    if t:
+        t = {k: (None if v == "" else v) for k, v in t[0].items()}
+        tg = nz(t["target_balance_kcal"])
+        if tg is not None:
+            print(f"meta         saldo {signed(tg)} kcal/dia, fixa (treine ou não)")
+        if t["allowance_kcal"] is not None:
+            rem = nz(t["remaining_kcal"])
+            gasto = f"gasto {kn(r['out_kcal'])} {chr(8722) if (tg or 0) < 0 else chr(43)} {kn(abs(tg or 0))}" if r["out_kcal"] is not None else "meta fixa, sem basal"
+            print(f"pode consumir {kn(t['allowance_kcal'])} kcal  ({gasto}) · {'resta' if rem >= 0 else 'passou'} {kn(abs(rem))}")
+        if t["day_state"] != "na_conta":
+            why = {"hoje": "dia em andamento", "incompleto": "diário incompleto", "sem_refeicao": "sem refeição", "sem_basal": "sem basal"}[t["day_state"]]
+            print(f"fora da conta do acumulado: {why}")
 
 
 def cmd_perfil(a):
@@ -1070,6 +1152,42 @@ def cmd_perfil(a):
         bot(f"update profile set {', '.join(sets)}, source = 'bot'")
         note("decisao", "Perfil do basal atualizado: " + ", ".join(f"{k} {v}" for k, v in o.items()) + ".", "profile")
     table(bot("select height_cm as altura_cm, birth_date as nascimento, sex as sexo, activity_factor as fator from profile"))
+
+
+def cmd_saldo_alvo(a):
+    """Saldo-alvo do dia (meta fixa; −300 = déficit de 300). Guardado como goals.deficit_kcal = −saldo-alvo."""
+    cur = int(bot("select deficit_kcal from goals")[0]["deficit_kcal"])
+    if a:
+        raw = a[0].replace("−", "-").replace("+", "")
+        if not re.fullmatch(r"-?\d+", raw):
+            sys.exit("uso: fit saldo-alvo [kcal]   (ex.: fit saldo-alvo -300; negativo = déficit)")
+        v = int(raw)
+        if not -1000 <= v <= 500:
+            sys.exit("erro: saldo-alvo fora de −1000 … +500 kcal/dia")
+        bot(f"update goals set deficit_kcal = {-v}, source = 'bot'")
+        note("decisao", f"Meta do dia (saldo-alvo): {signed(-cur)} → {signed(v)} kcal/dia, fixa. "
+             f"Pode consumir = basal + rotina + exercício {signed(v)}.", "goals")
+        cur = -v
+    print(f"saldo-alvo   {signed(-cur)} kcal/dia (fixo, treine ou não; goals.deficit_kcal = {cur})")
+    t = bot("select allowance_kcal, remaining_kcal from v_day_targets where date = today_sp()")
+    if t and t[0]["allowance_kcal"] is not None:
+        print(f"hoje         pode consumir {kn(t[0]['allowance_kcal'])} kcal · resta {kn(t[0]['remaining_kcal'])}")
+
+
+def cmd_diario(a):
+    """Marca o diário alimentar de um dia como incompleto (fora do saldo acumulado e das médias) ou completo."""
+    pos, o = opts(a, flags=("nota",))
+    if not pos or pos[0] not in ("incompleto", "completo"):
+        sys.exit('uso: fit diario incompleto|completo [data] [--nota t]')
+    d = pdate(pos[1] if len(pos) > 1 else None)
+    flag = pos[0] == "incompleto"
+    bot(f"insert into daily_checks (date, diary_incomplete, source) values ({lit(d)}, {'true' if flag else 'false'}, 'bot') "
+        f"on conflict (date) do update set diary_incomplete = excluded.diary_incomplete, source = 'bot'")
+    dm = f"{d[8:10]}/{d[5:7]}"
+    note("nota", f"Diário de {dm} marcado como {'incompleto' if flag else 'completo'}: "
+         + ("fica fora do saldo acumulado e das médias de macros." if flag else "volta para o saldo acumulado e as médias.")
+         + (f" {o['nota']}" if o.get("nota") else ""), "daily_checks")
+    table(bot(f"select date, day_state as estado, food_kcal as comida, balance_kcal as saldo_real from v_day_targets where date = {lit(d)}"))
 
 
 def cmd_videos(a):
@@ -1105,6 +1223,7 @@ COMMANDS = {
     "meal-del": cmd_meal_del, "meal-photo": cmd_meal_photo, "food-add": cmd_food_add, "portion": cmd_portion, "tbca": cmd_tbca, "creatine": cmd_creatine,
     "water": cmd_water, "steps": cmd_steps, "note": cmd_note, "videos": cmd_videos,
     "kcal": cmd_kcal, "kcal-del": cmd_kcal_del, "kcal-day": cmd_kcal_day, "perfil": cmd_perfil,
+    "saldo-alvo": cmd_saldo_alvo, "diario": cmd_diario,
 }
 
 
