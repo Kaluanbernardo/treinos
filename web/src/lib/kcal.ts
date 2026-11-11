@@ -2,25 +2,31 @@ import { useEnergyDaily, useNutritionTargets, usePlan } from './api'
 import { addDays, todaySP } from './format'
 import type { EnergyDay, Modality, PlanItem } from './types'
 
-/** Regras em docs/calorias.md ("Meta de kcal de hoje"). Contas puras aqui; o hook só junta as queries. */
-
-/** O ideal do dia é o gasto real (basal + rotina + exercício), que só existe com basal. */
-export const hasDynamicIdeal = (row: EnergyDay | undefined | null) => row?.out_kcal != null
-
 /**
- * Kcal ideal de um dia já vivido (docs/calorias.md):
- *   out_kcal (gasto do dia), quando a view tem
- *   senão `fallback` (goals.kcal_target fixo), senão null.
+ * Meta calórica (docs/calorias.md, "Meta fixa e permissão"). Contas puras aqui; o hook só junta as queries.
+ *
+ *   meta do dia      = saldo-alvo FIXO (v_energy_daily.target_balance_kcal = −goals.deficit_kcal; hoje −300),
+ *                      treine ou não
+ *   pode consumir    = basal + rotina + exercício já feito + saldo-alvo   (= gasto − 300)
+ *   ainda resta      = pode consumir − comida
+ *
+ * O treino aumenta a PERMISSÃO (o exercício entra no gasto), não a meta. Treino de hoje ainda por fazer não entra
+ * na conta: aparece só como aviso de quanto a permissão deve subir quando for registrado.
  */
-export function idealKcal(row: EnergyDay | undefined | null, fallback: number | null): number | null {
-  if (hasDynamicIdeal(row)) return Math.round(Number(row!.out_kcal))
+
+/** Permissão de um dia: gasto do dia + saldo-alvo; sem basal, `fallback` (goals.kcal_target fixo), senão null. */
+export function allowanceOf(row: Pick<EnergyDay, 'out_kcal' | 'target_balance_kcal'> | undefined | null, fallback: number | null): number | null {
+  if (row?.out_kcal != null) return Math.round(Number(row.out_kcal) + Number(row.target_balance_kcal ?? 0))
   return fallback ?? null
 }
 
-/** % consumido do ideal (arredondado), ou null sem ideal. */
-export const pctOf = (value: number, ideal: number | null) => (ideal && ideal > 0 ? Math.round((value / ideal) * 100) : null)
+/** A permissão vem do gasto real (só existe com basal). */
+export const hasDynamicAllowance = (row: Pick<EnergyDay, 'out_kcal'> | undefined | null) => row?.out_kcal != null
 
-// ---------------------------------------------------------------- treino planejado
+/** % consumido da permissão (arredondado), ou null sem permissão. */
+export const pctOf = (value: number, of: number | null) => (of && of > 0 ? Math.round((value / of) * 100) : null)
+
+// ---------------------------------------------------------------- treino planejado (só o aviso)
 /** Espelho de public.modality_met() (Compendium of Physical Activities). */
 const MET: Record<Modality, number> = { musculacao: 5, muay_thai: 10, jiu_jitsu: 8, cross: 8, funcional: 6 }
 
@@ -43,53 +49,54 @@ export function meanSessionKcal(rows: EnergyDay[], today: string) {
   return days.length ? Math.round(days.reduce((s, r) => s + Number(r.exercise_kcal), 0) / days.length) : 0
 }
 
-// ---------------------------------------------------------------- metas de hoje
-export interface KcalTargets {
-  /** Meta se fizer o treino que falta hoje (= noWorkout sem plano pendente). */
-  withWorkout: number | null
-  /** Meta só com o exercício já registrado hoje. */
-  noWorkout: number | null
-  /** Kcal estimadas do treino que ainda falta hoje. */
-  plannedKcal: number
-  /** Há treino planejado e ainda não registrado hoje. */
-  hasPlan: boolean
-  /** true = metas a partir do gasto (basal); false = meta fixa goals.kcal_target. */
+// ---------------------------------------------------------------- hoje
+export interface DayAllowance {
+  /** true = permissão a partir do gasto (basal); false = meta fixa goals.kcal_target */
   dynamic: boolean
+  /** saldo-alvo do dia (−300 = déficit de 300); null sem dados do dia */
+  targetBalance: number | null
+  bmr: number | null
+  life: number | null
+  /** exercício já registrado hoje: é o que o treino somou na permissão */
+  exercise: number
+  exerciseEstimated: boolean
+  /** pode consumir hoje */
+  allowance: number | null
+  /** treinos de hoje ainda por fazer e quanto devem somar na permissão quando feitos (estimativa) */
+  pendingCount: number
+  pendingKcal: number
+  pendingTitles: string[]
 }
 
-/**
- * noWorkout = bmr + rotina + exercício registrado; withWorkout = noWorkout + planejado.
- * Sem basal cai em goals.kcal_target, meta fixa: não soma treino.
- */
-export function kcalTargets({ rows, plan, today, fallback }: {
+/** Permissão de hoje. Sem basal cai em goals.kcal_target (meta fixa, sem exercício somado). */
+export function dayAllowance({ rows, plan, today, fallback }: {
   rows: EnergyDay[]; plan: PlanItem[]; today: string; fallback: number | null
-}): KcalTargets {
+}): DayAllowance {
   const row = rows.find((r) => r.date === today)
   const pending = remainingPlan(plan.filter((i) => i.date === today))
   const weight = row?.weight_kg != null ? Number(row.weight_kg) : null
   const perSession = weight == null ? meanSessionKcal(rows, today) : 0
-  const plannedKcal = pending.reduce((s, i) => s + (weight != null ? estimateSessionKcal(i, weight) : perSession), 0)
-  const hasPlan = pending.length > 0
-
+  const pendingKcal = pending.reduce((s, i) => s + (weight != null ? estimateSessionKcal(i, weight) : perSession), 0)
+  const targetBalance = row?.target_balance_kcal != null ? Number(row.target_balance_kcal) : null
+  const base = { targetBalance, pendingCount: pending.length, pendingKcal, pendingTitles: pending.map((i) => i.title), exercise: Number(row?.exercise_kcal ?? 0), exerciseEstimated: !!row?.is_estimate }
   if (row?.bmr_kcal == null || row.daily_life_kcal == null) {
-    return { withWorkout: fallback, noWorkout: fallback, plannedKcal, hasPlan, dynamic: false }
+    return { ...base, dynamic: false, bmr: null, life: null, allowance: fallback }
   }
-  const noWorkout = Math.round(Number(row.bmr_kcal) + Number(row.daily_life_kcal) + Number(row.exercise_kcal))
-  return { withWorkout: noWorkout + plannedKcal, noWorkout, plannedKcal, hasPlan, dynamic: true }
+  return { ...base, dynamic: true, bmr: Number(row.bmr_kcal), life: Number(row.daily_life_kcal), allowance: allowanceOf(row, fallback) }
 }
 
-/** Metas de kcal de hoje. Mesma janela de 60 dias da aba Calorias (um cache só). */
-export function useKcalTargets() {
+/** Quanto ainda resta da permissão (negativo = passou), ou null sem permissão. */
+export const remainingKcal = (a: Pick<DayAllowance, 'allowance'> | null, food: number) => (a?.allowance == null ? null : Math.round(a.allowance - food))
+
+/** Permissão de hoje. Mesma janela de 60 dias da aba Calorias (um cache só). */
+export function useDayAllowance() {
   const today = todaySP()
   const energy = useEnergyDaily(60)
   const plan = usePlan(today, today)
   const targets = useNutritionTargets()
   const isPending = energy.isPending || plan.isPending || targets.isPending
-  const data = isPending ? null : kcalTargets({
+  const data = isPending ? null : dayAllowance({
     rows: energy.data ?? [], plan: plan.data ?? [], today, fallback: targets.data?.kcal_target ?? null,
   })
   return { data, isPending, isError: energy.isError || plan.isError || targets.isError }
 }
-
-/** Meta principal do dia: com treino se ainda há treino pendente, senão sem treino. */
-export const mainTarget = (k: KcalTargets | null) => (k ? (k.hasPlan ? k.withWorkout : k.noWorkout) : null)

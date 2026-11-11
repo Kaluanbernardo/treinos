@@ -1,15 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { CalendarCheck, Camera, ChevronDown, ChevronLeft, ChevronRight, Droplets, ImageOff, Maximize2, MessageCircle, X } from 'lucide-react'
-import { useDailyNutrition, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useProteinTarget, useSignedUrls } from '../lib/api'
-import type { DailyNutrition, FoodLog, MealPhoto, NutritionTargets, ProteinTarget } from '../lib/types'
-import { TZ, addDays, capitalize, dm, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
+import { useDailyNutrition, useDayTargets, useEnergyDaily, useFoodLogs, useMealPhotos, useNutritionTargets, useProteinTarget, useSignedUrls } from '../lib/api'
+import type { DailyNutrition, DayTarget, FoodLog, MealPhoto, NutritionTargets, ProteinTarget } from '../lib/types'
+import { TZ, addDays, capitalize, intFmt, kgFmt, longDay, num, plural, todaySP } from '../lib/format'
 import { Badge, Button, Card, ErrorState, IconButton, Segmented, Skeleton } from '../components/ui'
 import { Meter } from '../components/viz'
 import { Ring } from '../components/Ring'
-import { type KcalTargets, hasDynamicIdeal, idealKcal, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
+import { type DayAllowance, allowanceOf, hasDynamicAllowance, pctOf, remainingKcal, useDayAllowance } from '../lib/kcal'
 import { PeriodStepper, SaldoPeriodo } from './SaldoPeriodo'
-import { ProteinZoneBar, ZoneChip } from '../components/Protein'
-import { bandOf, proteinZone } from '../lib/protein'
+import { MacroZoneBar, ZoneChip } from '../components/Protein'
+import { AllowancePanel } from '../components/Allowance'
+import { bandOf } from '../lib/protein'
+import { type Macro, type ZoneBand, MACRO_NAME, bandsOf, macroZone } from '../lib/macros'
 
 const EMPTY: DailyNutrition = { date: '', kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0, n_items: 0, has_estimated: false, food_logged: false, creatine: false, creatine_g: null, water_ml: null }
 
@@ -25,9 +27,10 @@ export function Nutricao() {
   const protein = useProteinTarget()
   const logs = useFoodLogs(date)
   const photos = useMealPhotos(date)
-  // hoje: metas com/sem treino (lib/kcal.ts); dias passados: gasto real. Mesma janela de 60 dias da aba Calorias.
+  // hoje: permissão = gasto até agora − 300 (lib/kcal.ts); dias passados: gasto do dia − 300. Mesma janela de 60 dias da aba Calorias.
   const energy = useEnergyDaily(60)
-  const kt = useKcalTargets()
+  const kt = useDayAllowance()
+  const dayT = useDayTargets(date, date, view === 'dia')
   const isToday = date === today
   const energyDay = energy.data?.find((e) => e.date === date)
   const k = isToday ? kt.data : null
@@ -72,9 +75,9 @@ export function Nutricao() {
       ) : daily.isPending || targets.isPending || energy.isPending || (isToday && kt.isPending) ? (
         <Skeleton className="h-80" />
       ) : (
-        <Macros day={day} t={t ?? null} k={k} pt={protein.data ?? null} inProgress={isToday}
-          ideal={isToday ? mainTarget(k) : idealKcal(energyDay, t?.kcal_target ?? null)}
-          dynamic={isToday ? !!k?.dynamic : hasDynamicIdeal(energyDay)} />
+        <Macros day={day} k={k} pt={protein.data ?? null} dt={dayT.data?.[0] ?? null} inProgress={isToday}
+          allowance={isToday ? k?.allowance ?? null : allowanceOf(energyDay, t?.kcal_target ?? null)}
+          dynamic={isToday ? !!k?.dynamic : hasDynamicAllowance(energyDay)} />
       )}
       </div>
 
@@ -95,117 +98,82 @@ export function Nutricao() {
   )
 }
 
-function Macros({ day, t, k, pt, inProgress, ideal, dynamic }: {
-  day: DailyNutrition; t: NutritionTargets | null; k: KcalTargets | null; pt: ProteinTarget | null; inProgress: boolean
-  ideal: number | null; dynamic: boolean
+function Macros({ day, k, pt, dt, inProgress, allowance, dynamic }: {
+  day: DailyNutrition; k: DayAllowance | null; pt: ProteinTarget | null; dt: DayTarget | null; inProgress: boolean
+  allowance: number | null; dynamic: boolean
 }) {
-  const kcalT = ideal
-  const kcalPct = pctOf(day.kcal, kcalT)
-  const left = kcalT != null ? kcalT - day.kcal : null
-  const macros = [
-    { name: 'Carbo', color: 'var(--color-carb)', value: day.carb_g, target: t?.carb_target_g ?? null, band: null, of: t?.carb_target_g ? `${t.carb_target_g}` : null },
-    { name: 'Gordura', color: 'var(--color-fat)', value: day.fat_g, target: t?.fat_min_g ?? null, band: t?.fat_min_g && t.fat_max_g ? [t.fat_min_g, t.fat_max_g] as [number, number] : null, of: t?.fat_min_g ? `${t.fat_min_g}–${t.fat_max_g}` : null },
-  ]
+  const kcalPct = pctOf(day.kcal, allowance)
+  const left = remainingKcal({ allowance }, day.kcal)
+  const bands = bandsOf(dt)
+  const incomplete = dt?.day_state === 'incompleto'
+  const target = dt?.target_balance_kcal ?? k?.targetBalance ?? null
+  const minus = target != null && target !== 0 ? ` ${target < 0 ? '−' : '+'} ${intFmt(Math.abs(target))}` : ''
   return (
     <Card tone="raised" aria-label="Macros do dia">
       <div className="flex flex-col items-center">
-        <Ring value={day.kcal} target={kcalT} color="var(--color-kcal)" size={184} stroke={16}
-          label={`Calorias: ${intFmt(day.kcal)}${kcalT ? ` de ${intFmt(kcalT)} ideais (${kcalPct}%)` : ''} kcal`}>
+        <Ring value={day.kcal} target={allowance} color="var(--color-kcal)" size={184} stroke={16}
+          label={`Calorias: ${intFmt(day.kcal)}${allowance ? ` de ${intFmt(allowance)} que pode consumir (${kcalPct}%)` : ''} kcal`}>
           <span className="text-[48px] font-bold leading-none tracking-[-0.02em] tabular-nums">{intFmt(left != null ? Math.abs(left) : day.kcal)}</span>
-          <span className="mt-1 text-sm text-muted">{left == null ? 'kcal no dia' : left >= 0 ? 'kcal restantes' : 'kcal acima'}</span>
+          <span className="mt-1 text-sm text-muted">{left == null ? 'kcal no dia' : left >= 0 ? (inProgress ? 'ainda resta' : 'kcal abaixo') : 'kcal acima'}</span>
         </Ring>
         <p className="mt-3 text-[15px] tabular-nums text-muted">
-          <b className="font-semibold text-kcal">{intFmt(day.kcal)}</b>{kcalT ? <> / {intFmt(kcalT)} kcal · <b className="font-semibold text-fg">{kcalPct}%</b></> : ' kcal · meta ainda não definida'}
+          <b className="font-semibold text-kcal">{intFmt(day.kcal)}</b>{allowance ? <> de {intFmt(allowance)} kcal · <b className="font-semibold text-fg">{kcalPct}%</b></> : ' kcal · meta ainda não definida'}
         </p>
-        {kcalT != null && (
+        {allowance != null && (
           <p className="mt-0.5 text-[13px] text-muted">
-            {!dynamic ? 'meta fixa (sem gasto calculado para o dia)'
-              : k ? (k.hasPlan ? 'meta com o treino que falta hoje' : 'meta de hoje (sem treino pendente)')
-                : 'ideal do dia (gasto do dia)'}
+            {!dynamic ? 'meta fixa (sem gasto calculado para o dia)' : inProgress ? `pode consumir hoje (gasto${minus})` : `permitido no dia (gasto${minus})`}
           </p>
         )}
       </div>
-      {k?.dynamic && <KcalTargetsBlock k={k} kcal={day.kcal} />}
+      {k?.dynamic && <AllowancePanel a={k} food={day.kcal} showRemaining={false} className="mt-5 border-t border-line pt-5" />}
+      {incomplete && (
+        <p className="mt-5 rounded-2xl bg-bg/60 px-4 py-3 text-[15px] text-muted ring-1 ring-line">
+          <b className="font-semibold text-fg">Diário incompleto.</b> Este dia fica fora do saldo acumulado e das médias.
+        </p>
+      )}
       <ul className="mt-5 flex flex-col gap-4 border-t border-line pt-5">
-        <li><ProteinRow grams={Number(day.protein_g)} pt={pt} inProgress={inProgress} /></li>
-        {macros.map((m) => {
-          const pct = m.target ? Math.round((m.value / m.target) * 100) : null
-          return (
-            <li key={m.name}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="flex items-center gap-2 font-medium">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} aria-hidden="true" />{m.name}
-                </span>
-                <span className="tabular-nums text-muted">
-                  <b className="text-lg font-bold text-fg">{intFmt(m.value)}</b>{m.of ? ` / ${m.of} g` : ' g'}
-                  {pct != null && <span className="ml-2 inline-block w-11 text-right text-sm">{pct}%</span>}
-                </span>
-              </div>
-              <Meter className="mt-2" value={m.value} max={m.target ?? m.value} color={m.color} target={m.band ? null : m.target} band={m.band}
-                label={`${m.name}: ${intFmt(m.value)} g${m.of ? ` de ${m.of} g` : ''}`} />
-            </li>
-          )
-        })}
+        <li><MacroRow macro="protein" grams={Number(day.protein_g)} band={bandOf(pt)} inProgress={inProgress} hideZone={incomplete}
+          note={(b) => <>mínimo {b.min} · ideal {b.ideal}–{b.cap} g{pt?.ref_weight_kg != null && <> · ref. {num(Number(pt.ref_weight_kg))} kg{pt.ref_basis === 'teto_imc' ? ' (teto IMC 30)' : ''}</>}</>}
+          empty="Faixa de proteína depois da primeira pesagem (mande o peso no chat)." /></li>
+        <li><MacroRow macro="carb" grams={Number(day.carb_g)} band={bands.carb} inProgress={inProgress} hideZone={incomplete}
+          note={(b) => <>mínimo {b.min}{b.ideal > b.min ? <> · ideal {b.ideal}–{b.cap} g</> : <> · ideal até {b.cap} g</>} · o que sobra da permissão</>}
+          empty="Faixa de carbo quando houver permissão do dia (basal) e peso." /></li>
+        <li><MacroRow macro="fat" grams={Number(day.fat_g)} band={bands.fat} inProgress={inProgress} hideZone={incomplete}
+          note={(b) => <>mínimo {b.min} · ideal {b.ideal}–{b.cap} g · 20–35 % da permissão</>}
+          empty="Faixa de gordura quando houver permissão do dia (basal)." /></li>
       </ul>
     </Card>
   )
 }
 
-/** Hoje: as duas metas (com / sem o treino que falta), cada uma com o consumido. */
-function KcalTargetsBlock({ k, kcal }: { k: KcalTargets; kcal: number }) {
-  const rows = k.hasPlan
-    ? [{ name: 'Com treino', target: k.withWorkout, sub: `+${intFmt(k.plannedKcal)} kcal do treino que falta` },
-       { name: 'Sem treino', target: k.noWorkout, sub: 'só o exercício já registrado' }]
-    : [{ name: 'Sem treino pendente', target: k.noWorkout, sub: 'exercício de hoje já contado' }]
-  return (
-    <div className="mt-5 flex flex-col gap-4 border-t border-line pt-5">
-      {rows.map((r) => r.target != null && (
-        <div key={r.name}>
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-medium">{r.name}</span>
-            <span className="tabular-nums text-muted">
-              <b className="text-lg font-bold text-fg">{intFmt(kcal)}</b> / {intFmt(r.target)} kcal
-              <span className="ml-2 inline-block w-11 text-right text-sm">{pctOf(kcal, r.target)}%</span>
-            </span>
-          </div>
-          <Meter className="mt-2" value={kcal} max={r.target} color="var(--color-kcal)" target={r.target}
-            label={`${r.name}: ${intFmt(kcal)} de ${intFmt(r.target)} kcal`} />
-          <p className="mt-1 text-[13px] text-muted">{r.sub}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /**
- * Proteína por zona (abaixo · ok · ideal · acima do teto útil), sem "faltam X g". Faixa de v_protein_target:
- * 1,3 / 1,6 / 2,2 g/kg sobre a última pesagem limitada ao IMC 30 (docs/proteina.md).
+ * Um macro por zona (abaixo · mínimo ok · ideal · acima), sem "faltam X g". Proteína: v_protein_target
+ * (docs/proteina.md). Carbo e gordura: v_day_targets, pela permissão do dia (docs/macros.md).
  */
-function ProteinRow({ grams, pt, inProgress }: { grams: number; pt: ProteinTarget | null; inProgress: boolean }) {
-  const band = bandOf(pt)
-  const zone = band ? proteinZone(grams, band) : null
+function MacroRow({ macro, grams, band, inProgress, hideZone, note, empty }: {
+  macro: Macro; grams: number; band: ZoneBand | null; inProgress: boolean; hideZone: boolean
+  note: (b: ZoneBand) => React.ReactNode; empty: string
+}) {
+  const zone = band && !hideZone ? macroZone(grams, band) : null
+  const dot = macro === 'protein' ? 'bg-protein' : macro === 'carb' ? 'bg-carb' : 'bg-fat'
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="flex items-center gap-2 font-medium">
-          <span className="h-2.5 w-2.5 rounded-full bg-protein" aria-hidden="true" />Proteína
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2 font-medium">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} aria-hidden="true" />{MACRO_NAME[macro]}
+          {zone && <span className="hidden sm:inline-flex"><ZoneChip zone={zone} macro={macro} inProgress={inProgress} /></span>}
         </span>
-        <span className="flex items-center gap-2 tabular-nums text-muted">
-          {zone && <ZoneChip zone={zone} inProgress={inProgress} />}
-          <span><b className="text-lg font-bold text-fg">{intFmt(grams)}</b> g</span>
-        </span>
+        <span className="shrink-0 whitespace-nowrap tabular-nums text-muted"><b className="text-lg font-bold text-fg">{intFmt(grams)}</b> g</span>
       </div>
+      {zone && <div className="mt-1.5 sm:hidden"><ZoneChip zone={zone} macro={macro} inProgress={inProgress} /></div>}
       {band ? (
         <>
-          <ProteinZoneBar className="mt-2" grams={grams} band={band}
-            label={`Proteína: ${intFmt(grams)} g. Mínimo ${band.min} g, ideal ${band.ideal} a ${band.cap} g`} />
-          <p className="mt-0.5 text-[13px] text-muted">
-            mínimo {band.min} · ideal {band.ideal}–{band.cap} g
-            {pt?.ref_weight_kg != null && <> · ref. {num(Number(pt.ref_weight_kg))} kg{pt.ref_basis === 'teto_imc' ? ' (teto IMC 30)' : ''}{pt.weight_date ? `, pesagem ${dm(pt.weight_date)}` : ''}</>}
-          </p>
+          <MacroZoneBar className="mt-2" macro={macro} grams={grams} band={band}
+            label={`${MACRO_NAME[macro]}: ${intFmt(grams)} g. Mínimo ${band.min} g, ideal ${band.ideal} a ${band.cap} g`} />
+          <p className="mt-0.5 text-[13px] text-muted">{note(band)}</p>
         </>
       ) : (
-        <p className="mt-1 text-[13px] text-muted">Faixa de proteína depois da primeira pesagem (mande o peso no chat).</p>
+        <p className="mt-1 text-[13px] text-muted">{empty}</p>
       )}
     </div>
   )

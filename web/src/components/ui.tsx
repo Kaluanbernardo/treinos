@@ -26,7 +26,7 @@ export function CardHead({ title, aside, sub, id }: { title: ReactNode; aside?: 
   )
 }
 
-type Tone = 'lime' | 'warn' | 'ok' | 'err' | 'muted' | 'protein' | 'kcal' | 'fat'
+type Tone = 'lime' | 'warn' | 'ok' | 'err' | 'muted' | 'protein' | 'kcal' | 'fat' | 'carb'
 const TONES: Record<Tone, string> = {
   lime: 'bg-lime/15 text-lime',
   warn: 'bg-warn/15 text-warn',
@@ -36,6 +36,7 @@ const TONES: Record<Tone, string> = {
   protein: 'bg-protein/15 text-protein',
   kcal: 'bg-kcal/15 text-kcal',
   fat: 'bg-fat/15 text-fat',
+  carb: 'bg-carb/15 text-carb',
 }
 
 export function Badge({ tone = 'muted', children, className = '' }: { tone?: Tone; children: ReactNode; className?: string }) {

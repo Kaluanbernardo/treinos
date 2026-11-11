@@ -3,7 +3,7 @@ import {
   Ban, Check, ChevronRight, Clock, Dumbbell, Hourglass, Moon, NotebookText, PencilLine, Play, SlidersHorizontal, Timer, Trophy, X,
 } from 'lucide-react'
 import {
-  useActiveSession, useBodyMetrics, useDailyNutrition, useDailySteps, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
+  useActiveSession, useBodyMetrics, useDailyNutrition, useDailySteps, useDayTargets, useDeleteSession, useExerciseSessions, useMarkSession, useNotes,
   useProteinTarget, usePrs, useRecomposition, useStartSession, useTemplates, useToday, useWeek, useWeekGoal,
   useWeightTrend,
 } from '../lib/api'
@@ -11,7 +11,9 @@ import { go } from '../lib/router'
 import type { PlanItem, Template } from '../lib/types'
 import { capitalize, dMon, hhmm, intFmt, kgFmt, num, todaySP, wdShort, addDays, weekStart } from '../lib/format'
 import { weekDays } from '../lib/week'
-import { type KcalTargets, mainTarget, pctOf, useKcalTargets } from '../lib/kcal'
+import { type DayAllowance, pctOf, remainingKcal, useDayAllowance } from '../lib/kcal'
+import { signedInt } from '../lib/balance'
+import { type Macro, type ZoneBand, MACRO_NAME, bandsOf, macroZone } from '../lib/macros'
 import { Badge, Button, Card, ErrorState, IconButton, Skeleton, haptic, toast } from '../components/ui'
 import { READING_TONE, Triad, readingLine } from '../components/Triad'
 import { ModalityDot } from '../components/modality'
@@ -359,15 +361,33 @@ function EvolucaoCard() {
 }
 
 // ---------------------------------------------------------------- Dia: anéis
-/** As duas metas de hoje (com / sem o treino que falta). */
-function KcalTargetsLine({ k, kcal }: { k: KcalTargets; kcal: number }) {
+/** Meta fixa de hoje numa linha: quanto ainda resta da permissão, a meta (−300) e o que o treino somou. */
+function AllowanceLine({ k, kcal }: { k: DayAllowance; kcal: number }) {
+  const left = remainingKcal(k, kcal)
+  if (left == null || k.allowance == null) return null
   return (
     <p className="mt-3 text-[13px] leading-snug tabular-nums text-muted">
-      {k.hasPlan ? (
-        <>Com treino <b className="font-semibold text-fg">{intFmt(k.withWorkout)}</b> kcal ({pctOf(kcal, k.withWorkout)}%)
-          {' · '}Sem treino <b className="font-semibold text-fg">{intFmt(k.noWorkout)}</b> kcal ({pctOf(kcal, k.noWorkout)}%)</>
-      ) : <>Sem treino pendente hoje</>}
+      {left >= 0 ? <>Resta <b className="font-semibold text-fg">{intFmt(left)}</b></> : <>Passou <b className="font-semibold text-warn">{intFmt(-left)}</b></>} de {intFmt(k.allowance)} kcal
+      {k.targetBalance != null && <> · meta {signedInt(k.targetBalance)} fixa</>}
+      {k.exercise > 0 && <> · treino <b className="font-semibold text-fg">+{intFmt(k.exercise)}</b> na permissão</>}
+      {k.exercise <= 0 && k.pendingCount > 0 && <> · o treino vai somar na permissão</>}
     </p>
+  )
+}
+
+/** Carbo ou gordura de hoje: gramas + zona (faixa pela permissão do dia, docs/macros.md). */
+function MacroMini({ macro, grams, band }: { macro: Macro; grams: number; band: ZoneBand | null }) {
+  const zone = band ? macroZone(grams, band) : null
+  return (
+    <button type="button" onClick={() => go('nutricao')} className="flex min-h-12 min-w-0 flex-col justify-center text-left">
+      <span className="flex items-center gap-1.5 text-[13px] text-muted">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${macro === 'carb' ? 'bg-carb' : 'bg-fat'}`} aria-hidden="true" />{MACRO_NAME[macro]}
+      </span>
+      <span className="flex flex-wrap items-baseline gap-x-1.5 text-[17px] font-bold leading-tight tabular-nums">
+        {intFmt(grams)}<span className="text-[13px] font-medium text-muted">g</span>
+        {zone && <ZoneWord zone={zone} macro={macro} />}
+      </span>
+    </button>
   )
 }
 
@@ -376,13 +396,15 @@ function DiaCard() {
   const goal = useWeekGoal()
   const protein = useProteinTarget()
   const steps = useDailySteps(2)
-  const kt = useKcalTargets()
+  const kt = useDayAllowance()
   const date = todaySP()
+  const dayT = useDayTargets(date, date)
   if (daily.isPending || goal.isPending || protein.isPending || kt.isPending) return <Skeleton className="h-52" />
   const d = daily.data?.find((x) => x.date === date)
-  // meta de hoje (lib/kcal.ts): com o treino que falta, se houver; senão só o exercício já registrado
+  // permissão de hoje (lib/kcal.ts): basal + rotina + exercício já feito + meta (−300); treino por fazer não entra
   const k = kt.data
-  const ideal = mainTarget(k)
+  const ideal = k?.allowance ?? null
+  const mb = bandsOf(dayT.data?.[0])
   const w = goal.week
   const kcal = d?.kcal ?? 0
   const p = d?.protein_g ?? 0
@@ -408,7 +430,7 @@ function DiaCard() {
       <div className="flex items-center gap-5">
         <Rings size={136} stroke={13} gap={4} rings={[
           { value: done, target: gmin, color: 'var(--color-lime)', label: `Treinos na semana: ${done} de ${gmin} (faixa ${gmin} a ${gmax}); ${weekReading(done, gmin, gmax, true)}` },
-          { value: kcal, target: ideal, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${ideal ? ` de ${intFmt(ideal)} ideais (${kcalPct}%)` : ''}` },
+          { value: kcal, target: ideal, color: 'var(--color-kcal)', label: `Calorias: ${intFmt(kcal)}${ideal ? ` de ${intFmt(ideal)} que pode consumir (${kcalPct}%)` : ''}` },
           { value: p, target: band?.ideal ?? null, color: 'var(--color-protein)', label: `Proteína: ${intFmt(p)} g${band ? `; ideal a partir de ${band.ideal} g` : ''}` },
         ]} />
         <ul className="min-w-0 flex-1 divide-y divide-line">
@@ -424,7 +446,11 @@ function DiaCard() {
           ))}
         </ul>
       </div>
-      {k?.dynamic && <KcalTargetsLine k={k} kcal={kcal} />}
+      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-2">
+        <MacroMini macro="carb" grams={Number(d?.carb_g ?? 0)} band={mb.carb} />
+        <MacroMini macro="fat" grams={Number(d?.fat_g ?? 0)} band={mb.fat} />
+      </div>
+      {k?.dynamic && <AllowanceLine k={k} kcal={kcal} />}
       {steps.isSuccess && (() => {
         const yest = steps.data.get(addDays(date, -1))
         return (

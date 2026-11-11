@@ -378,6 +378,51 @@ export interface EnergyDay {
   bmr_missing: string[]
 }
 
+/** Estado do dia em v_day_targets: só `na_conta` entra nas somas (saldo acumulado, médias de macros). */
+export type DayState = 'na_conta' | 'hoje' | 'incompleto' | 'sem_refeicao' | 'sem_basal'
+export type MacroZoneName = 'abaixo' | 'ok' | 'ideal' | 'acima'
+
+/** v_day_targets (migração 20261111200000): permissão do dia, saldo contra a meta e faixas de macros. */
+export interface DayTarget {
+  date: string
+  day_state: DayState
+  diary_incomplete: boolean
+  /** saldo-alvo do dia (−goals.deficit_kcal; −300 = déficit de 300) */
+  target_balance_kcal: number | null
+  bmr_kcal: number | null
+  daily_life_kcal: number | null
+  exercise_kcal: number
+  is_estimate: boolean
+  out_kcal: number | null
+  /** pode consumir = gasto + saldo-alvo (sem basal: goals.kcal_target) */
+  allowance_kcal: number | null
+  allowance_basis: 'gasto' | 'fixa' | null
+  food_logged: boolean
+  food_kcal: number
+  food_has_estimated: boolean
+  remaining_kcal: number | null
+  /** saldo real: comida − gasto (zero = manutenção) */
+  balance_kcal: number | null
+  /** comida − permissão (saldo contra a meta) */
+  balance_vs_target_kcal: number | null
+  protein_g: number
+  carb_g: number
+  fat_g: number
+  ref_weight_kg: number | null
+  protein_min_g: number | null
+  protein_ideal_g: number | null
+  protein_cap_g: number | null
+  fat_floor_g: number | null
+  fat_min_g: number | null
+  fat_max_g: number | null
+  carb_floor_g: number | null
+  carb_min_g: number | null
+  carb_max_g: number | null
+  protein_zone: MacroZoneName | null
+  fat_zone: MacroZoneName | null
+  carb_zone: MacroZoneName | null
+}
+
 export interface Profile {
   id: string
   height_cm: number | null

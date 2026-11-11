@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Check, Trophy } from 'lucide-react'
-import { useMonthlySummary, useProteinTarget, useWeekGoal, useWeeklySummary } from '../lib/api'
-import { bandOf, proteinZone } from '../lib/protein'
+import { ArrowDownRight, ArrowUpRight, Check, Trophy } from 'lucide-react'
+import { useDayTargets, useMonthlySummary, useWeekGoal, useWeeklySummary } from '../lib/api'
 import { weekReading, weekStatus } from '../lib/training'
-import { ProteinZoneBar, ZoneWord } from './Protein'
+import { type Macro, type PeriodMacro, MACRO_NAME, periodNutrition } from '../lib/macros'
+import { signedInt } from '../lib/balance'
+import { MacroZoneBar, ZoneWord } from './Protein'
 import type { PeriodSummary } from '../lib/types'
 import { addDays, dm, intFmt, monthLabel, num, todaySP, weekStart } from '../lib/format'
 import { Ring } from './Ring'
-import { Big, Delta, Meter } from './viz'
+import { Big, Delta } from './viz'
 import { Button, Card, CardHead } from './ui'
 
 /** Treinos feitos no período: soma de by_modality (feito + parcial, sem teto pelo plano; mesma conta de v_training_weeks). */
@@ -15,13 +16,14 @@ export const periodDone = (row: PeriodSummary) =>
   Object.values(row.by_modality ?? {}).reduce((s, m) => s + Number(m?.done ?? 0), 0)
 
 /**
- * Números de um período (semana ou mês): treinos contra a meta semanal (faixa 4–9) + grade com peso,
- * cintura, kcal e proteína por zona. Hoje (segunda / dia 1) e Evolução.
+ * Números de um período (semana ou mês): treinos contra a meta semanal (faixa 4–9) + grade com peso, cintura,
+ * saldo real contra a meta (−300 × dias) e proteína, carbo e gordura por zona. Saldo e macros usam os mesmos dias
+ * (fechados, com refeição e basal, diário completo; v_day_targets). Hoje (segunda / dia 1) e Evolução.
  */
 export function SummaryStats({ row, prev }: { row: PeriodSummary; prev?: PeriodSummary }) {
   const goal = useWeekGoal()
-  const protein = useProteinTarget()
-  const band = bandOf(protein.data)
+  const dayT = useDayTargets(row.period_start, row.period_end)
+  const pn = dayT.data ? periodNutrition(dayT.data, row.period_start, row.period_end) : null
   const gmin = goal.week?.goal_min ?? 4
   const gmax = goal.week?.goal_max ?? 9
   const week = row.days_in_period <= 7
@@ -32,8 +34,6 @@ export function SummaryStats({ row, prev }: { row: PeriodSummary; prev?: PeriodS
   const perWeek = done / weeksIn
   const st = weekStatus(week ? done : Math.round(perWeek * 10) / 10, gmin, gmax)
   const waistDelta = row.waist_last_cm != null && prev?.waist_last_cm != null ? row.waist_last_cm - prev.waist_last_cm : null
-  const pAvg = row.protein_avg_g != null ? Number(row.protein_avg_g) : null
-  const zone = band && pAvg != null ? proteinZone(pAvg, band) : null
   return (
     <div>
       <div className="flex items-center gap-4">
@@ -62,19 +62,43 @@ export function SummaryStats({ row, prev }: { row: PeriodSummary; prev?: PeriodS
           {waistDelta != null ? <Delta value={waistDelta} unit="cm" good="down" className="text-xl" />
             : <span className="text-xl font-bold tabular-nums">{row.waist_last_cm != null ? `${num(row.waist_last_cm)} cm` : '—'}</span>}
         </Cell>
-        <Cell label={`Kcal · ${row.days_logged}/${row.days_in_period} dias`}>
-          <span className="text-xl font-bold tabular-nums">{row.kcal_avg != null ? intFmt(row.kcal_avg) : '—'}</span>
-          {row.kcal_avg != null && row.kcal_target ? <Meter className="mt-1.5" height={6} value={row.kcal_avg} max={row.kcal_target} target={row.kcal_target} color="var(--color-kcal)" label={`Média ${intFmt(row.kcal_avg)} de ${intFmt(row.kcal_target)} kcal`} /> : null}
+        <Cell label={pn ? `Saldo real · ${pn.days} ${pn.days === 1 ? 'dia' : 'dias'} na conta` : 'Saldo real'} className="col-span-2">
+          {pn?.balance != null ? (
+            <>
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-xl font-bold tabular-nums">{signedInt(Math.round(pn.balance))} kcal</span>
+                <span className={`inline-flex items-center gap-0.5 text-[13px] font-semibold ${pn.balance > 0 ? 'text-warn' : 'text-ok'}`}>
+                  {pn.balance > 0 ? <ArrowUpRight size={14} strokeWidth={2.5} aria-hidden="true" /> : pn.balance < 0 ? <ArrowDownRight size={14} strokeWidth={2.5} aria-hidden="true" /> : null}
+                  {pn.balance > 0 ? 'superávit' : pn.balance < 0 ? 'déficit' : 'empate'}
+                </span>
+              </span>
+              <span className="mt-0.5 block text-[13px] tabular-nums text-muted">
+                meta {signedInt(Math.round(pn.target ?? 0))} ({signedInt(Math.round((pn.target ?? 0) / Math.max(1, pn.days)))}/dia)
+                {pn.kcalAvg != null && <> · comida {intFmt(pn.kcalAvg)} kcal/dia</>}
+                {pn.incomplete + pn.noFood > 0 && <> · {pn.incomplete + pn.noFood} fora (sem refeição ou incompleto)</>}
+              </span>
+            </>
+          ) : <span className="text-xl font-bold tabular-nums">—</span>}
         </Cell>
-        <Cell label="Proteína (média)">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-xl font-bold tabular-nums">{pAvg != null ? `${intFmt(pAvg)} g` : '—'}</span>
-            {zone && <ZoneWord zone={zone} />}
-          </span>
-          {pAvg != null && band ? <ProteinZoneBar className="mt-1.5" compact grams={pAvg} band={band} label={`Média ${intFmt(pAvg)} g; ideal ${band.ideal} a ${band.cap} g`} /> : null}
-        </Cell>
+        <MacroCell macro="protein" m={pn?.protein ?? null} />
+        <MacroCell macro="carb" m={pn?.carb ?? null} />
+        <MacroCell macro="fat" m={pn?.fat ?? null} />
       </dl>
     </div>
+  )
+}
+
+/** Média do macro nos dias na conta, com a zona contra a faixa média desses dias. */
+function MacroCell({ macro, m }: { macro: Macro; m: PeriodMacro | null }) {
+  return (
+    <Cell label={`${MACRO_NAME[macro]} (média)`}>
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-xl font-bold tabular-nums">{m ? `${intFmt(m.avg)} g` : '—'}</span>
+        {m?.zone && <ZoneWord zone={m.zone} macro={macro} />}
+      </span>
+      {m?.band ? <MacroZoneBar className="mt-1.5" compact macro={macro} grams={m.avg} band={m.band}
+        label={`${MACRO_NAME[macro]}: média ${intFmt(m.avg)} g; ideal ${m.band.ideal} a ${m.band.cap} g`} /> : null}
+    </Cell>
   )
 }
 

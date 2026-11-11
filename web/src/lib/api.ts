@@ -4,8 +4,9 @@ import { addDays, todaySP } from './format'
 import { pickPlanLink, type SessionLinkHint } from './planLink'
 import { GOAL_DEFAULT, trainingWeeksFrom } from './training'
 import { proteinTargetFrom } from './protein'
+import { MACRO_DEFAULTS, dayTargetsFrom } from './macros'
 import type {
-  BodyMetric, BotNote, DailyNutrition, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MealPhoto, MonthlySummary, MuscleVolumeWeek,
+  BodyMetric, BotNote, DailyNutrition, DayTarget, EnergyDay, Profile, ExerciseSession, ExerciseStatus, FoodLog, MealPhoto, MonthlySummary, MuscleVolumeWeek,
   NutritionTargets, PeriodSummary, PlanItem, PrRow, PrevBest, PrevSet, ProgressPhoto, ProteinTarget, Recomposition,
   SessionRow, SessionStatus, SetLog, Streak, Template, TrainingWeek, WeightPoint,
 } from './types'
@@ -532,27 +533,26 @@ export const useNutritionTargets = () =>
     queryFn: () => one<NutritionTargets>(db().from('v_nutrition_targets').select('*')),
   })
 
+/** v_protein_target, ou a mesma regra no cliente enquanto a view não existe. */
+const readProteinTarget = () => viewOr('v_protein_target',
+  () => one<ProteinTarget>(db().from('v_protein_target').select('*')),
+  async () => {
+    const [w, pf, g] = await Promise.all([
+      one<{ date: string; peso_kg: number }>(db().from('body_metrics').select('date, peso_kg').not('peso_kg', 'is', null).order('date', { ascending: false }).limit(1)),
+      one<{ height_cm: number | null }>(db().from('profile').select('height_cm').limit(1)),
+      goalsRow(),
+    ])
+    return proteinTargetFrom({
+      weightKg: w?.peso_kg ?? null, weightDate: w?.date ?? null, heightCm: pf?.height_cm ?? null,
+      pesoRefKg: g?.peso_ref_kg == null ? null : Number(g.peso_ref_kg),
+      gPerKg: { min: g?.protein_min_g_per_kg as number | null, ideal: g?.protein_ideal_g_per_kg as number | null, cap: g?.protein_cap_g_per_kg as number | null },
+      bmiMax: g && 'protein_ref_bmi_max' in g ? (g.protein_ref_bmi_max == null ? null : Number(g.protein_ref_bmi_max)) : undefined,
+    })
+  })
+
 /** Faixa de proteína do dia (v_protein_target; regra em docs/proteina.md). */
 export const useProteinTarget = () =>
-  useQuery({
-    queryKey: ['v_protein_target'],
-    staleTime: 5 * 60_000,
-    queryFn: () => viewOr('v_protein_target',
-      () => one<ProteinTarget>(db().from('v_protein_target').select('*')),
-      async () => {
-        const [w, pf, g] = await Promise.all([
-          one<{ date: string; peso_kg: number }>(db().from('body_metrics').select('date, peso_kg').not('peso_kg', 'is', null).order('date', { ascending: false }).limit(1)),
-          one<{ height_cm: number | null }>(db().from('profile').select('height_cm').limit(1)),
-          goalsRow(),
-        ])
-        return proteinTargetFrom({
-          weightKg: w?.peso_kg ?? null, weightDate: w?.date ?? null, heightCm: pf?.height_cm ?? null,
-          pesoRefKg: g?.peso_ref_kg == null ? null : Number(g.peso_ref_kg),
-          gPerKg: { min: g?.protein_min_g_per_kg as number | null, ideal: g?.protein_ideal_g_per_kg as number | null, cap: g?.protein_cap_g_per_kg as number | null },
-          bmiMax: g && 'protein_ref_bmi_max' in g ? (g.protein_ref_bmi_max == null ? null : Number(g.protein_ref_bmi_max)) : undefined,
-        })
-      }),
-  })
+  useQuery({ queryKey: ['v_protein_target'], staleTime: 5 * 60_000, queryFn: readProteinTarget })
 
 export const useFoodLogs = (date: string) =>
   useQuery({
@@ -582,6 +582,37 @@ export const useEnergyRange = (from: string, to: string, enabled = true) =>
     enabled,
     queryFn: () =>
       rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', from).lte('date', to).order('date')),
+  })
+
+/**
+ * v_day_targets de um intervalo (permissão do dia, saldo contra a meta, diário incompleto, faixas de macros).
+ * A chave começa por 'v_energy_daily' para ser invalidada junto com o gasto (Feito/Faltei, fim de treino).
+ * Sem a view (migração 20261111200000 ainda não aplicada): a mesma conta no cliente (lib/macros.ts).
+ */
+export const useDayTargets = (from: string, to: string, enabled = true) =>
+  useQuery({
+    queryKey: ['v_energy_daily', 'targets', from, to],
+    enabled,
+    queryFn: () => viewOr('v_day_targets',
+      () => rows<DayTarget>(db().from('v_day_targets').select('*').gte('date', from).lte('date', to).order('date')),
+      async () => {
+        const [energy, nutrition, checks, protein, g] = await Promise.all([
+          rows<EnergyDay>(db().from('v_energy_daily').select('*').gte('date', from).lte('date', to).order('date')),
+          rows<DailyNutrition>(db().from('v_daily_nutrition').select('date, protein_g, carb_g, fat_g').gte('date', from).lte('date', to)),
+          // coluna nova: sem ela, nenhum dia marcado
+          rows<{ date: string }>(db().from('daily_checks').select('date').eq('diary_incomplete', true).gte('date', from).lte('date', to)).catch(() => []),
+          readProteinTarget(),
+          goalsRow(),
+        ])
+        return dayTargetsFrom({
+          energy, nutrition, incomplete: new Set(checks.map((c) => c.date)), protein, today: todaySP(),
+          kcalTarget: g?.kcal_target == null ? null : Number(g.kcal_target),
+          params: {
+            fatFloorPct: numOr(g?.fat_floor_pct, MACRO_DEFAULTS.fatFloorPct), fatMinPct: numOr(g?.fat_min_pct, MACRO_DEFAULTS.fatMinPct),
+            fatMaxPct: numOr(g?.fat_max_pct, MACRO_DEFAULTS.fatMaxPct), carbFloorG: numOr(g?.carb_floor_g, MACRO_DEFAULTS.carbFloorG),
+          },
+        })
+      }),
   })
 
 /** Passos por dia (daily_checks.steps, via `fit steps`). Só exibição: não entram no gasto. */

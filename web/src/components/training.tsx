@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, Ban, Check, ChevronLeft, ChevronRight, Flame, Hourglass, Play, X } from 'lucide-react'
-import { useAllSessions, useEnergyRange, useTrainingWeeks } from '../lib/api'
+import { useAllSessions, useTrainingWeeks } from '../lib/api'
 import { addDays, capitalize, diffDays, dm, intFmt, monthShort, todaySP, wdShort, weekStart } from '../lib/format'
 import {
-  type HeatDay, type HistoryStatus, type TypeCount, aggregateDays, countByType, countLevel, heatmapWeeks, kcalLevel,
+  type HeatDay, type HistoryStatus, type TypeCount, aggregateDays, countByType, countLevel, heatmapWeeks,
   monthMarks, weekReading, weekStatus,
 } from '../lib/training'
 import type { TrainingWeek } from '../lib/types'
 import { Badge, Card, CardHead, Collecting, ErrorState, IconButton, Segmented, Skeleton } from './ui'
 import { MODALITY } from './modality'
+import { SaldoAcumulado } from './SaldoAcumulado'
 
 /**
  * Treinos: status de cada atividade, meta semanal (faixa 4–9), calendário em mapa de calor e
@@ -166,36 +167,35 @@ function useWidth<T extends HTMLElement>() {
   return [ref, w] as const
 }
 
-type HeatMode = 'treinos' | 'kcal'
+/** Treinos = mapa de calor; Kcal = saldo calórico acumulado (components/SaldoAcumulado.tsx). */
+type CalMode = 'treinos' | 'kcal'
 
 const COUNT_BG = ['', 'bg-lime/30', 'bg-lime/55', 'bg-lime/80', 'bg-lime']
-const KCAL_BG = ['', 'bg-kcal/30', 'bg-kcal/55', 'bg-kcal/80', 'bg-kcal']
 
 /**
  * Mapa de calor estilo "contributions": colunas = semanas, linhas = seg–dom. Intensidade = treinos feitos
- * no dia (ou kcal de exercício). Falta = ✕ desenhado (dia só com falta) ou ponto coral no canto (falta + treino).
+ * no dia. Falta = ✕ desenhado (dia só com falta) ou ponto coral no canto (falta + treino).
  * Dias antes do primeiro registro ficam apagados: não são "zero treino", são "sem registro".
+ * O modo Kcal troca o mapa pelo gráfico de saldo acumulado; o mapa de treinos não muda.
  */
 export function TrainingCalendar({ maxWeeks = 53 }: { maxWeeks?: number }) {
   const today = todaySP()
   const [box, width] = useWidth<HTMLDivElement>()
   const n = width ? Math.max(8, Math.min(maxWeeks, Math.floor((width - LABEL_W + GAP) / (cellTarget(width) + GAP)))) : 13
   const [back, setBack] = useState(0)      // semanas para trás a partir da semana atual
-  const [mode, setMode] = useState<HeatMode>('treinos')
+  const [mode, setMode] = useState<CalMode>('treinos')
   const endWs = addDays(weekStart(today), -7 * back)
   const from = addDays(endWs, -7 * (n - 1))
   const to = addDays(endWs, 6)
   const sessions = useAllSessions()
   const weeksQ = useTrainingWeeks()
-  const energy = useEnergyRange(from, to < today ? to : today, mode === 'kcal')
   const [sel, setSel] = useState<string>(today)
 
   const firstDate = sessions.data?.[0]?.date ?? null
   const weeks = useMemo(() => {
-    const kcal = new Map((energy.data ?? []).map((e) => [e.date, Number(e.exercise_kcal)]))
     const list = (sessions.data ?? []).filter((s) => s.date >= from && s.date <= to)
-    return heatmapWeeks(aggregateDays(list, mode === 'kcal' ? kcal : undefined), from, to, today)
-  }, [sessions.data, energy.data, from, to, today, mode])
+    return heatmapWeeks(aggregateDays(list), from, to, today)
+  }, [sessions.data, from, to, today])
 
   if (sessions.isPending) return <Skeleton className="h-72" />
   if (sessions.isError) return <ErrorState what="o calendário" onRetry={() => sessions.refetch()} />
@@ -215,12 +215,14 @@ export function TrainingCalendar({ maxWeeks = 53 }: { maxWeeks?: number }) {
   return (
     <Card aria-labelledby="cal-title">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <CardHead id="cal-title" title="Calendário" sub={firstDate ? `registro desde ${dm(firstDate)}` : undefined} />
-        <div className="w-full sm:w-44"><Segmented size="sm" label="Intensidade por" value={mode} onChange={setMode}
+        {mode === 'kcal'
+          ? <CardHead id="cal-title" title="Saldo acumulado" sub="comida − gasto, somado dia a dia · tracejado = meta" />
+          : <CardHead id="cal-title" title="Calendário" sub={firstDate ? `registro desde ${dm(firstDate)}` : undefined} />}
+        <div className="w-full sm:w-44"><Segmented size="sm" label="Mostrar no calendário" value={mode} onChange={setMode}
           options={[{ value: 'treinos', label: 'Treinos' }, { value: 'kcal', label: 'Kcal' }]} /></div>
       </div>
 
-      {!firstDate ? (
+      {mode === 'kcal' ? <SaldoAcumulado /> : !firstDate ? (
         <div className="mt-4"><Collecting title="Nenhuma atividade registrada">Cada treino feito ou faltado pinta um dia aqui.</Collecting></div>
       ) : (
         <>
@@ -244,12 +246,12 @@ export function TrainingCalendar({ maxWeeks = 53 }: { maxWeeks?: number }) {
                 return <span key={`m${i}`} aria-hidden="true" className="h-4 overflow-visible whitespace-nowrap text-[11px] leading-4 text-muted">{m ? monthShort(`${m.month}-01`) : ''}</span>
               })}
               {ROWS.map((r, row) => (
-                <Row key={row} label={r} cells={weeks.map((w) => w[row])} mode={mode} firstDate={firstDate} today={today} sel={sel} onPick={setSel} />
+                <Row key={row} label={r} cells={weeks.map((w) => w[row])} firstDate={firstDate} today={today} sel={sel} onPick={setSel} />
               ))}
             </div>
           </div>
 
-          <HeatLegend mode={mode} />
+          <HeatLegend />
 
           <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4">
             <Stat label="Treinos" value={intFmt(done)} />
@@ -257,42 +259,41 @@ export function TrainingCalendar({ maxWeeks = 53 }: { maxWeeks?: number }) {
             <Stat label="No mínimo" value={goalWeeks.length ? `${met}/${goalWeeks.length}` : '—'} unit={goalWeeks.length ? 'sem.' : undefined} />
           </dl>
 
-          {selDay && <DayDetail d={selDay} mode={mode} before={!!firstDate && sel < firstDate} />}
+          {selDay && <DayDetail d={selDay} before={!!firstDate && sel < firstDate} />}
         </>
       )}
     </Card>
   )
 }
 
-function Row({ label, cells, mode, firstDate, today, sel, onPick }: {
-  label: string; cells: HeatDay[]; mode: HeatMode; firstDate: string | null; today: string; sel: string; onPick: (d: string) => void
+function Row({ label, cells, firstDate, today, sel, onPick }: {
+  label: string; cells: HeatDay[]; firstDate: string | null; today: string; sel: string; onPick: (d: string) => void
 }) {
   return (
     <>
       <span className="flex items-center text-[11px] leading-none text-muted" aria-hidden="true">{label}</span>
-      {cells.map((d) => <Cell key={d.date} d={d} mode={mode} before={!!firstDate && d.date < firstDate} today={d.date === today} selected={d.date === sel} onPick={onPick} />)}
+      {cells.map((d) => <Cell key={d.date} d={d} before={!!firstDate && d.date < firstDate} today={d.date === today} selected={d.date === sel} onPick={onPick} />)}
     </>
   )
 }
 
-function cellAria(d: HeatDay, mode: HeatMode, before: boolean) {
+function cellAria(d: HeatDay, before: boolean) {
   const day = `${wdShort(d.date)} ${dm(d.date)}`
   if (d.future) return `${day}: ainda não chegou`
   if (before) return `${day}: antes do registro`
   const parts = [d.done ? `${d.done} ${d.done === 1 ? 'treino' : 'treinos'}` : 'sem treino']
   if (d.missed) parts.push(`${d.missed} ${d.missed === 1 ? 'falta' : 'faltas'}`)
-  if (mode === 'kcal' && d.kcal) parts.push(`${intFmt(d.kcal)} kcal de exercício`)
   return `${day}: ${parts.join(', ')}`
 }
 
-function Cell({ d, mode, before, today, selected, onPick }: { d: HeatDay; mode: HeatMode; before: boolean; today: boolean; selected: boolean; onPick: (d: string) => void }) {
-  const level = mode === 'kcal' ? kcalLevel(d.kcal) : countLevel(d.done)
+function Cell({ d, before, today, selected, onPick }: { d: HeatDay; before: boolean; today: boolean; selected: boolean; onPick: (d: string) => void }) {
+  const level = countLevel(d.done)
   const fill = d.future ? 'bg-transparent ring-1 ring-inset ring-line/70'
     : before ? 'bg-line/25 ring-1 ring-inset ring-line/40'
-      : level ? (mode === 'kcal' ? KCAL_BG : COUNT_BG)[level] : 'bg-line'
+      : level ? COUNT_BG[level] : 'bg-line'
   const ring = selected ? 'outline-2 outline-offset-1 outline-fg' : today ? 'outline-1 outline-offset-1 outline-lime/70' : ''
   return (
-    <button type="button" role="gridcell" aria-label={cellAria(d, mode, before)} aria-selected={selected} disabled={d.future}
+    <button type="button" role="gridcell" aria-label={cellAria(d, before)} aria-selected={selected} disabled={d.future}
       onClick={() => onPick(d.date)}
       className={`relative aspect-square min-w-0 rounded-[4px] outline-solid transition-[outline-color] duration-150 ${fill} ${ring} ${selected || today ? '' : 'outline-0'}`}>
       {d.missed > 0 && !d.future && !before && (d.done === 0
@@ -302,16 +303,15 @@ function Cell({ d, mode, before, today, selected, onPick }: { d: HeatDay; mode: 
   )
 }
 
-function HeatLegend({ mode }: { mode: HeatMode }) {
-  const bg = mode === 'kcal' ? KCAL_BG : COUNT_BG
-  const steps = mode === 'kcal' ? ['0', '<300', '300', '600', '900+'] : ['0', '1', '2', '3', '4+']
+function HeatLegend() {
+  const steps = ['0', '1', '2', '3', '4+']
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[12px] text-muted">
       <span className="flex items-center gap-1.5">
-        {mode === 'kcal' ? 'kcal/dia' : 'treinos/dia'}
+        treinos/dia
         {steps.map((s, i) => (
           <span key={s} className="flex flex-col items-center gap-0.5">
-            <span className={`h-3.5 w-3.5 rounded-[3px] ${i ? bg[i] : 'bg-line'}`} aria-hidden="true" />
+            <span className={`h-3.5 w-3.5 rounded-[3px] ${i ? COUNT_BG[i] : 'bg-line'}`} aria-hidden="true" />
           </span>
         ))}
         <span className="tabular-nums">{steps[0]}–{steps[4]}</span>
@@ -334,12 +334,11 @@ function Stat({ label, value, unit }: { label: string; value: string; unit?: str
   )
 }
 
-function DayDetail({ d, mode, before }: { d: HeatDay; mode: HeatMode; before: boolean }) {
+function DayDetail({ d, before }: { d: HeatDay; before: boolean }) {
   return (
     <div className="mt-4 rounded-2xl bg-bg/60 p-4 ring-1 ring-line" aria-live="polite">
       <p className="flex items-baseline justify-between gap-2">
         <span className="font-semibold">{capitalize(wdShort(d.date))}, {dm(d.date)}</span>
-        {mode === 'kcal' && d.kcal ? <span className="text-sm tabular-nums text-kcal">{intFmt(d.kcal)} kcal</span> : null}
       </p>
       {d.items.length === 0 ? (
         <p className="mt-1 text-[15px] text-muted">{before ? 'Antes do primeiro registro.' : d.future ? 'Ainda não chegou.' : 'Sem treino registrado.'}</p>

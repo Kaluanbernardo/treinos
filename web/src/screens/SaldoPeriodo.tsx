@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Camera, ChevronLeft, ChevronRight, MessageCircle, UserRound } from 'lucide-react'
-import { useEnergyRange } from '../lib/api'
+import { useDayTargets } from '../lib/api'
 import { type BalanceKind, type BalanceSummary, HIGH_DEFICIT_KCAL, KCAL_PER_KG_FAT, type PeriodRange, periodRange, signedInt, summarizeBalance } from '../lib/balance'
 import { capitalize, dm, intFmt, monthLabel, num, plural, todaySP, wdShort } from '../lib/format'
 import { go } from '../lib/router'
@@ -49,7 +49,8 @@ export function PeriodStepper({ kind, offset, onOffset }: { kind: BalanceKind; o
 export function SaldoPeriodo({ kind, offset }: { kind: BalanceKind; offset: number }) {
   const today = todaySP()
   const range = periodRange(kind, today, offset)
-  const energy = useEnergyRange(range.from, range.to)
+  // v_day_targets: mesmas colunas de saldo de v_energy_daily + o diário incompleto (marcado no chat)
+  const energy = useDayTargets(range.from, range.to)
 
   if (energy.isError) {
     return <div className="lg:col-start-1"><ErrorState what="o saldo" message={energy.error?.message} onRetry={() => energy.refetch()} /></div>
@@ -135,6 +136,7 @@ const datesOrCount = (dates: string[]) =>
 function OutOfCount({ s }: { s: BalanceSummary }) {
   const rows = [
     s.hasToday && { k: 'Hoje, em andamento', v: todayText(s) },
+    s.incomplete.length > 0 && { k: 'Diário incompleto', v: datesOrCount(s.incomplete) },
     s.noFood.length > 0 && { k: 'Sem refeição', v: datesOrCount(s.noFood) },
     s.noBmr.length > 0 && { k: 'Sem basal', v: datesOrCount(s.noBmr) },
     s.future > 0 && { k: 'Ainda por vir', v: plural(s.future, 'dia', 'dias') },
@@ -184,7 +186,7 @@ function NoBalance({ s, noun }: { s: BalanceSummary; noun: string }) {
   )
 }
 
-const STATE_NOTE = { today: 'dia em andamento', no_food: 'sem refeição', no_bmr: 'sem basal', future: 'ainda por vir' } as const
+const STATE_NOTE = { today: 'dia em andamento', incomplete: 'diário incompleto (fora da conta)', no_food: 'sem refeição', no_bmr: 'sem basal', future: 'ainda por vir' } as const
 
 function DailyBars({ s, kind, target }: { s: BalanceSummary; kind: BalanceKind; target: number | null }) {
   const data: BalancePoint[] = s.days.map((d) => d.state === 'counted'
