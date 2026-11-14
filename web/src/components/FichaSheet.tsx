@@ -11,7 +11,7 @@ import { kgFmt, todaySP } from '../lib/format'
 import { prFlagsFor } from '../lib/pr'
 import { sessionProgress } from '../lib/session'
 import { Badge, Button, Sheet, Skeleton, haptic, toast } from './ui'
-import { historyByExercise, repsLabel } from './Ficha'
+import { historyByExercise, OptionalTag, optionalSetsLabel, repsLabel } from './Ficha'
 import { Ring } from './Ring'
 
 /**
@@ -232,9 +232,13 @@ function ExerciseLog({ te, sets, skipped, last, best, open, readOnly, onToggle, 
         </span>
         <span className="min-w-0 flex-1">
           <span className={`block font-semibold leading-snug ${skipped ? 'text-muted line-through decoration-1' : ''}`}>{ex.name}</span>
-          <span className="mt-0.5 block text-sm tabular-nums text-muted">
-            {te.sets}×{repsLabel(te)}
-            {last?.top_kg ? ` · último ${kgFmt(last.top_kg)}×${last.top_reps}` : te.carga_alvo != null ? ` · alvo ${kgFmt(te.carga_alvo)} kg` : ''}
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm tabular-nums text-muted">
+            <span>
+              {te.sets}×{repsLabel(te)}
+              {optionalSetsLabel(te) ? ` · ${optionalSetsLabel(te)}` : ''}
+              {last?.top_kg ? ` · último ${kgFmt(last.top_kg)}×${last.top_reps}` : te.carga_alvo != null ? ` · alvo ${kgFmt(te.carga_alvo)} kg` : ''}
+            </span>
+            {te.optional && <OptionalTag />}
           </span>
         </span>
         {skipped ? (

@@ -12,7 +12,13 @@ import { MODALITY } from '../components/modality'
 import { Big } from '../components/viz'
 import { STATUS, StatusIcon, TrainingCalendar, TypeCountsCard, WeekGoalCard } from '../components/training'
 
-const monogram = (name: string) => name.replace(/^(\w)\w+ (\w)$/, '$1$2')
+/** "A — Ombros, braços e core" → letra "A" no selo e "Ombros, braços e core" no título (o nome não se repete). */
+function fichaLabel(name: string) {
+  const m = name.match(/^(\S{1,3}) — (.+)$/)
+  if (m) return { mark: m[1], title: m[2] }
+  const two = name.match(/^(\p{L})\p{L}* (\p{L})$/u)
+  return { mark: two ? `${two[1]}${two[2]}` : name.slice(0, 1).toUpperCase(), title: name }
+}
 
 /**
  * Celular: meta semanal → calendário → fichas → quantas vezes → histórico (uma coluna).
@@ -27,7 +33,8 @@ export function Treino() {
   const wide = useMedia('(min-width: 1024px)')
 
   const lastBy = new Map<string, string>()
-  for (const s of sessions.data ?? []) if (s.template_id && !lastBy.has(s.template_id) && (s.status === 'feito' || s.status === 'parcial')) lastBy.set(s.template_id, s.date)
+  // pelo nome da ficha: conta também as versões aposentadas com o mesmo nome (B curta → B, C+ → C)
+  for (const s of sessions.data ?? []) if (s.template_id && !lastBy.has(s.title) && (s.status === 'feito' || s.status === 'parcial')) lastBy.set(s.title, s.date)
   const todayStrength = (today.data ?? []).find((i) => i.active && i.template_id && i.modality === 'musculacao' && !i.session_status)
 
   return (
@@ -59,31 +66,32 @@ export function Treino() {
         ) : templates.isPending ? (
           <Skeleton className="h-72" />
         ) : (
-          <ul className="grid grid-cols-2 gap-3" aria-label="Fichas">
-            {templates.data!.map((t) => {
+          <ul className="flex flex-col gap-3" aria-label="Fichas">
+            {templates.data!.filter((t) => t.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((t) => {
               const isToday = todayStrength?.template_id === t.id
-              const last = lastBy.get(t.id)
+              const last = lastBy.get(t.name)
               const ago = last ? diffDays(todaySP(), last) : null
+              const { mark, title } = fichaLabel(t.name)
+              const when = ago == null ? 'ainda não feito' : ago === 0 ? 'feito hoje' : `há ${ago} ${ago === 1 ? 'dia' : 'dias'}`
               return (
                 <li key={t.id}>
                   <button
                     type="button" onClick={() => setOpen(t)}
-                    className={`flex h-full min-h-[148px] w-full flex-col rounded-[var(--radius-card)] p-4 text-left transition-colors duration-150 ${isToday ? 'bg-card-2 ring-1 ring-lime/50' : 'bg-card hover:bg-card-2'}`}
+                    aria-label={`${t.name}${isToday ? ', hoje' : ''}: ${t.template_exercises.length} exercícios, ${t.est_minutes ?? 60} min, ${when}`}
+                    className={`flex min-h-[88px] w-full items-center gap-4 rounded-[var(--radius-card)] p-4 text-left transition-colors duration-150 ${isToday ? 'bg-card-2 ring-1 ring-lime/50' : 'bg-card hover:bg-card-2'}`}
                   >
-                    <span className="flex items-start justify-between gap-2">
-                      <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg font-bold ${isToday ? 'action-fill' : 'bg-card-2 text-fg'}`} aria-hidden="true">
-                        {monogram(t.name)}
+                    <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-2xl font-bold ${isToday ? 'action-fill' : 'bg-card-2 text-fg'}`} aria-hidden="true">
+                      {mark}
+                    </span>
+                    <span className="min-w-0 flex-1" aria-hidden="true">
+                      <span className="block text-lg font-semibold leading-snug [text-wrap:balance]">{title}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm tabular-nums text-muted">
+                        <span className="flex items-center gap-1"><Dumbbell size={14} />{t.template_exercises.length}</span>
+                        <span className="flex items-center gap-1"><Timer size={14} />{t.est_minutes ?? 60} min</span>
+                        <span>{when}</span>
                       </span>
-                      {isToday && <Badge tone="lime">hoje</Badge>}
                     </span>
-                    <span className="mt-auto pt-3 text-lg font-semibold leading-tight">{t.name}</span>
-                    <span className="mt-1 flex items-center gap-3 text-sm tabular-nums text-muted">
-                      <span className="flex items-center gap-1"><Dumbbell size={14} aria-hidden="true" />{t.template_exercises.length}</span>
-                      <span className="flex items-center gap-1"><Timer size={14} aria-hidden="true" />{t.est_minutes ?? 60} min</span>
-                    </span>
-                    <span className={`mt-1 text-sm ${ago == null ? 'text-muted' : ago > 7 ? 'text-warn' : 'text-muted'}`}>
-                      {ago == null ? 'ainda não feito' : ago === 0 ? 'feito hoje' : `há ${ago} ${ago === 1 ? 'dia' : 'dias'}`}
-                    </span>
+                    {isToday ? <Badge tone="lime">hoje</Badge> : <ChevronRight size={20} className="shrink-0 text-muted" aria-hidden="true" />}
                   </button>
                 </li>
               )

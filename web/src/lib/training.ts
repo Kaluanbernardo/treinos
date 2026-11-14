@@ -130,7 +130,8 @@ export interface TypeCount { key: string; title: string; modality: Modality; tot
 export function countByType(sessions: Pick<SessionRow, 'date' | 'status' | 'title' | 'modality' | 'template_id'>[], since: string | null): TypeCount[] {
   const by = new Map<string, TypeCount>()
   for (const s of sessions) {
-    const key = s.template_id ?? `m:${s.modality}`
+    // ficha pelo nome: versões aposentadas com o mesmo nome (ex.: a B curta e a B completa) contam como a mesma ficha
+    const key = s.template_id ? `t:${s.title}` : `m:${s.modality}`
     let c = by.get(key)
     if (!c) by.set(key, c = { key, title: s.title, modality: s.modality, total: 0, inPeriod: 0, missedInPeriod: 0, last: null })
     const inP = since == null || s.date >= since

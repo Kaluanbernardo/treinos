@@ -18,6 +18,24 @@ export function targetLine(te: TemplateExercise) {
   ].filter(Boolean).join(' · ')
 }
 
+/** Selo discreto de exercício opcional: pode pular se faltar tempo (texto, não só cor). */
+export function OptionalTag({ className = '' }: { className?: string }) {
+  return (
+    <span title="Pode pular se faltar tempo"
+      className={`inline-flex shrink-0 items-center rounded-full border border-dashed border-muted/60 px-2 py-0.5 text-xs font-medium leading-tight text-muted ${className}`}>
+      opcional
+    </span>
+  )
+}
+
+/** "3ª opcional" / "3ª–4ª opcionais" para as últimas séries que podem sair primeiro. */
+export function optionalSetsLabel(te: Pick<TemplateExercise, 'sets' | 'optional_sets'>) {
+  const n = te.optional_sets ?? 0
+  if (n <= 0 || n >= te.sets) return null
+  const from = te.sets - n + 1
+  return n === 1 ? `${from}ª opcional` : `${from}ª–${te.sets}ª opcionais`
+}
+
 /** Ficha somente leitura (Treino e Agenda). Com `history`, cada exercício mostra a última melhor série e a curva de 1RM. */
 export function FichaDetail({ template, history }: { template: Template; history?: Map<string, ExerciseSession[]> }) {
   return (
@@ -43,6 +61,8 @@ export function FichaDetail({ template, history }: { template: Template; history
                   <span className="text-lg font-bold tabular-nums text-fg">{te.sets}×{repsLabel(te)}</span>
                   {te.rir && <span>RIR {te.rir}</span>}
                   {rest && <span>· {rest}</span>}
+                  {optionalSetsLabel(te) && <span>· {optionalSetsLabel(te)}</span>}
+                  {te.optional && <OptionalTag className="self-center" />}
                 </p>
                 {(last?.top_kg || te.carga_alvo != null || te.note) && (
                   <p className="mt-0.5 text-sm text-muted">

@@ -79,6 +79,9 @@ check('por tipo: período (desde 13/10) e total, ordem pelo período',
   types.map((t) => `${t.title} ${t.inPeriod}/${t.total} f${t.missedInPeriod}`),
   ['Muay thai 2/2 f0', 'Superior B 2/2 f0', 'Superior A 1/2 f1', 'Funcional 1/1 f0', 'Inferiores B 0/0 f1'])
 check('último feito por ficha', types.find((t) => t.title === 'Superior A')?.last, '2026-11-02')
+check('ficha aposentada com o mesmo nome soma na mesma linha',
+  countByType([s('2026-11-10', 'feito', 'B — Pernas', { template_id: 'velha' }), s('2026-11-14', 'feito', 'B — Pernas', { template_id: 'nova' })], null)
+    .map((t) => `${t.title} ${t.total} ${t.last}`), ['B — Pernas 2 2026-11-14'])
 check('sem período = tudo', countByType(hist, null).find((t) => t.title === 'Superior A')?.inPeriod, 2)
 
 // ---------------------------------------------------------------- histórico

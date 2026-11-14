@@ -97,6 +97,10 @@ export interface TemplateExercise {
   reps_alvo: number | null
   warmup: string | null
   note: string | null
+  /** pode pular o exercício inteiro se faltar tempo (versão longa ou 1º na ordem de corte) */
+  optional: boolean
+  /** quantas das últimas séries podem sair primeiro (0 = todas contam) */
+  optional_sets: number
   exercises: Exercise
 }
 
@@ -108,6 +112,8 @@ export interface Template {
   warmup: string | null
   note: string | null
   est_minutes: number | null
+  /** false = ficha aposentada: fora da lista, mas segue para o histórico */
+  active: boolean
   template_exercises: TemplateExercise[]
 }
 

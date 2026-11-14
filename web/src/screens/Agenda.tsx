@@ -125,7 +125,7 @@ export function Agenda() {
             )}
             <div className="mt-3">
               {tpl ? <FichaDetail template={tpl} /> : open.template_id ? <Skeleton className="h-40" /> : (
-                <p className="text-[15px] text-muted">Aula na Pugna. Registre com Feito/Faltei no Hoje ou pelo chat.</p>
+                <p className="text-[15px] text-muted">Registre com Feito/Faltei no Hoje ou pelo chat.</p>
               )}
             </div>
             <Button className="mt-4 w-full" size="lg" onClick={() => setOpen(null)}>Fechar</Button>

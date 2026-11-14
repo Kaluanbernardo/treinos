@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
-    "test": "jiti scripts/test-training.ts && jiti scripts/test-protein.ts && jiti scripts/test-macros.ts && jiti scripts/test-balance.ts && jiti scripts/test-plan-link.ts && jiti scripts/test-pr.ts"
+    "test": "jiti scripts/test-training.ts && jiti scripts/test-protein.ts && jiti scripts/test-macros.ts && jiti scripts/test-balance.ts && jiti scripts/test-plan-link.ts && jiti scripts/test-pr.ts && jiti scripts/test-session.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

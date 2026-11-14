@@ -13,7 +13,7 @@ import { prFlagsFor } from '../lib/pr'
 import { sessionProgress } from '../lib/session'
 import { dm, intFmt, kgFmt, mmss, num, capitalize, restLabel, wdShort } from '../lib/format'
 import { Badge, Button, Card, ErrorState, IconButton, Sheet, Skeleton, haptic, toast } from '../components/ui'
-import { repsLabel } from '../components/Ficha'
+import { optionalSetsLabel, repsLabel } from '../components/Ficha'
 import { Ring } from '../components/Ring'
 import { Big } from '../components/viz'
 import { MetricGrid, fitSize } from '../components/Metrics'
@@ -299,6 +299,8 @@ function Andamento({ id, date, title, startedAt, exercises, autoFinish }: {
           {restLabel(te.rest_s_min, te.rest_s_max) && (
             <li className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-muted"><Timer size={15} aria-hidden="true" /><b className="font-semibold tabular-nums text-fg">{restLabel(te.rest_s_min, te.rest_s_max)}</b></li>
           )}
+          {optionalSetsLabel(te) && <li className="rounded-full border border-dashed border-muted/60 px-3 py-1.5 text-muted">{optionalSetsLabel(te)}</li>}
+          {te.optional && <li className="rounded-full border border-dashed border-muted/60 px-3 py-1.5 text-muted" title="Pode pular se faltar tempo">opcional</li>}
         </ul>
         {tips && (
           <div className="mt-3 rounded-2xl bg-card p-4 text-[15px] leading-relaxed text-muted">
