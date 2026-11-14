@@ -28,7 +28,6 @@ export function FichaDetail({ template, history }: { template: Template; history
           <span className="line-clamp-3"><span className="font-medium text-fg">Aquecimento</span> · {template.warmup}</span>
         </p>
       )}
-      {template.note && <p className="mt-3 text-[15px] text-warn">{template.note}</p>}
       <ol className="mt-2 divide-y divide-line">
         {template.template_exercises.map((te) => {
           const h = history?.get(te.exercises.id) ?? []
