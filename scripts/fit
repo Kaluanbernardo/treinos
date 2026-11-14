@@ -543,6 +543,7 @@ def cmd_log_set(a):
                       f"where p.active limit 1")
             if not tpl:
                 tpl = bot(f"select te.template_id, null as slot_id, null as override_id from template_exercises te "
+                          f"join workout_templates w on w.id = te.template_id and w.active "
                           f"where te.exercise_id = {lit(ex['id'])} limit 1")
             t = tpl[0] if tpl else {"template_id": None, "slot_id": None, "override_id": None}
             sid = bot(f"insert into sessions (date, modality, template_id, slot_id, override_id, status, source) values ("
@@ -567,7 +568,9 @@ def cmd_carga(a):
         sys.exit("uso: fit carga <exercicio_slug> <kg> [--template slug] [--motivo t]")
     ex = exercise(pos[0])
     kg = pnum(pos[1], "kg")
-    tf = f" and template_id = (select id from workout_templates where slug = {lit(o['template'])})" if "template" in o else ""
+    # sem --template: só fichas ativas (as aposentadas ficam como estavam, para o histórico)
+    tf = (f" and template_id = (select id from workout_templates where slug = {lit(o['template'])})" if "template" in o
+          else " and template_id in (select id from workout_templates where active)")
     out = bot(f"update template_exercises set carga_alvo = {kg}, source = 'bot' where exercise_id = {lit(ex['id'])}{tf} "
               f"returning (select slug from workout_templates w where w.id = template_id) as ficha, carga_alvo")
     if not out:

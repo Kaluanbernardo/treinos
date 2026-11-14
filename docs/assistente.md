@@ -15,6 +15,11 @@ O app é um painel. **Quase tudo entra pelo chat**: o assistente traduz o que o 
   `decisao` (decisões de plano), `carga` (progressões; `fit carga` já cria), `remarcacao` (`move/skip/add` já criam),
   `alerta` (ritmo acima do teto, cintura subindo, dor), `resumo` (resumos semanais/mensais), `nota` (o resto).
 - Troca de máquina ou de execução quebra a série histórica do 1RM: registre em `bot_notes`.
+- **Fichas (desde 14/11/2026): só A, B e C**, sem versão curta/longa. O que pode sair num dia apertado fica marcado na
+  própria ficha: `template_exercises.optional` (exercício inteiro) e `optional_sets` (as últimas N séries). Pular um
+  opcional não deixa o treino `parcial`. Ficha antiga nunca é apagada: `workout_templates.active = false` tira da
+  lista e mantém o histórico (sessões antigas apontam para ela). **Academia não vai em título** (ficha, grade ou
+  exceção); se precisar, fica na `note` do slot.
 
 ## Mapa chat → comando
 
